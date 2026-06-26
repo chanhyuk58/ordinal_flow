@@ -1,9 +1,4 @@
 # ========================= ordinal_flow_core.py =========================
-"""
-Core definitions shared by both scripts.
-Copy the corresponding parts from your current big script into this file.
-"""
-
 import math
 import numpy as np
 import pandas as pd
