@@ -16,7 +16,7 @@
     \maketitle
 
 \begin{abstract}
-  Ordinal outcomes, such as Likert-type survey responses, are ubiquitous in political science, yet they pose distinctive challenges for causal inference. These outcomes are routinely analyzed by assigning numerical scores and applying linear models, despite longstanding concerns that ordinal responses do not identify treatment effects on an underlying cardinal scale without additional assumptions. Motivated by this identification limitation, I focus on distributional causal estimands, including category-specific and cumulative treatment effects, which are invariant to admissible transformations of the latent scale. Existing approaches typically estimate these quantities using parametric ordered logit or ordered probit models, which rely on restrictive assumptions about the latent error distribution and index specification.
+  Ordinal outcomes, such as Likert-type survey responses, are ubiquitous in political science, yet they pose distinctive challenges for causal inference. These outcomes are routinely analyzed by assigning numerical scores and applying linear models, despite longstanding concerns that ordinal responses do not identify treatment effects on an underlying cardinal scale without additional assumptions. Building on the classical identification result for ordinal outcomes and existing recommendations to report probability-based quantities, I develop a flexible likelihood-based framework for estimating distributional causal effects, including category-specific and cumulative treatment effects, which are invariant to admissible transformations of the latent scale. Existing approaches typically estimate these quantities using parametric ordered logit or ordered probit models, which rely on restrictive assumptions about the latent error distribution and index specification.
   This paper proposes a flexible likelihood-based estimation framework for ordinal causal inference using conditional normalizing flows. The proposed estimator flexibly learns the conditional distribution underlying observed ordinal responses without imposing a parametric latent error distribution, while preserving the likelihood-based structure familiar from classical ordered response models. The same framework accommodates both structured latent-index models and fully nonparametric conditional distribution estimators, allowing researchers to balance interpretability and modeling flexibility within a unified estimation procedure.
   Monte Carlo simulations show that the proposed estimator maintains low bias across a broad range of latent error distributions and nonlinear response mechanisms under which conventional ordered response models perform poorly. Replications of two published survey experiments demonstrate that flexible distributional estimation can materially alter substantive conclusions about experimental treatment effects.
 \end{abstract}
@@ -31,45 +31,31 @@ Many of these studies investigate outcomes that are inherently latent, including
 
 Applied researchers typically analyze ordinal outcomes in one of three ways. The most common approach assigns numerical scores to response categories and estimates treatment effects using difference-in-means or ordinary least squares, implicitly treating ordinal responses as cardinal. Another common strategy collapses multiple categories into a binary outcome before estimation, sacrificing information about intermediate responses. A third approach fits ordered response models, such as ordered logit or ordered probit, which explicitly account for the ordinal nature of the data through a latent-variable representation. Each approach reflects a different set of assumptions about the relationship between the observed ordinal responses and the underlying latent attitude.
 
-This paper begins from a classical observation in the ordinal response literature: ordinal outcomes identify latent treatment effects only up to location and scale transformation of the underlying latent scale. Consequently, treatment effects defined through arbitrary numerical codings of ordinal responses generally lack a clear identification justification without additional measurement assumptions \citep{Schroder2017a, Bond2018a, Bloem2022a} that the categories actually carry numerical meanings. Motivated by this identification limitation, I focus instead on distributional causal estimands defined directly on the observed ordinal outcome, including category-specific and cumulative treatment effects. These estimands respect the ordinal nature of the data and remain invariant to transformations of the latent scale.
+This paper begins from a classical observation in the ordinal response literature: latent treatment effects are identified only up to location and scale transformations of the underlying latent variable. Consequently, treatment effects defined through arbitrary numerical codings of ordinal responses generally require additional measurement assumptions linking the observed categories to a cardinal latent scale \citep{Schroder2017a, Bond2018a, Bloem2022a}. This observation motivates a focus on distributional causal quantities, such as category-specific and cumulative treatment effects, which are defined directly on the observed ordinal responses and do not rely on assumptions about the cardinal spacing between adjacent categories.
 
-Estimating these distributional causal effects requires modeling the conditional distribution of ordinal responses. Existing practice overwhelmingly relies on ordered logit and ordered probit models, which estimate the response distribution through a latent-index model with a fixed parametric error distribution. These models are attractive because they efficiently exploit the ordering of response categories and often perform well when their assumptions are approximately satisfied. In many survey experiments, however, these assumptions may be difficult to justify. Political attitudes are frequently polarized or clustered, producing multimodal latent distributions, and persuasive treatments often affect moderate respondents differently from strong supporters, generating nonlinear treatment-response relationships. In such settings, restrictive assumptions about the latent error distribution and index specification can distort estimated category probabilities and cumulative treatment effects, even when the experimental design itself identifies the causal effect. The practical challenge is therefore not causal identification, but flexible estimation of the ordinal response distribution under empirically realistic response mechanisms.
+This perspective complements recent recommendations in political methodology to summarize ordinal treatment effects using predicted probabilities rather than latent coefficients \citep{Hanmer2013a}. Rather than revisiting how ordered response models should be interpreted, this paper asks how these probability-based causal quantities should be estimated when the assumptions underlying conventional ordered response models are difficult to justify. The methodological focus therefore shifts from interpreting latent coefficients to flexibly estimating the conditional ordinal response distribution. Existing semiparametric estimators relax some of these assumptions but remain difficult to apply with rich covariate structures or nonlinear response mechanisms that are common in modern survey research.
 
-This paper develops a flexible likelihood-based framework for estimating causal effects with ordinal outcomes that relaxes these distributional assumptions while preserving the likelihood-based structure of classical ordered response models. The proposed estimator employs conditional normalizing flows to flexibly model the conditional distribution underlying observed ordinal responses without specifying a parametric latent error distribution. The same framework accommodates both structured latent-index specifications and fully nonparametric conditional distribution models, allowing researchers to balance interpretability and modeling flexibility within a unified estimation procedure. The resulting estimator directly recovers distributional causal estimands while remaining compatible with familiar latent-variable representations when such structure is scientifically appropriate.
+Estimating these distributional causal effects requires modeling the conditional distribution of ordinal responses. Ordered logit and ordered probit remain the workhorses of applied political science because they efficiently exploit the ordering of response categories, admit interpretable latent-variable representations, and often perform well when their assumptions are approximately satisfied. Their validity, however, depends on assumptions about the latent error distribution and index specification that may be difficult to justify in many survey experiments. Political attitudes are frequently polarized or clustered, producing multimodal latent distributions, while persuasive treatments often affect moderate respondents differently from strong supporters, generating nonlinear treatment-response relationships. In such settings, misspecification can distort estimated category probabilities and cumulative treatment effects, even when the experimental design itself identifies the causal effect. The practical challenge is therefore not causal identification, but flexible estimation of the conditional ordinal response distribution.
 
-I evaluate the proposed framework through Monte Carlo simulations and empirical replications of two published survey experiments. The simulations demonstrate that the proposed estimator maintains low bias across a broad range of latent error distributions and nonlinear response mechanisms under which conventional ordered response models perform poorly. I then revisit the survey experiments of \citet{Tomz2020a} and \citet{Mattingly2025a}. The empirical analyses show that flexible estimation of the ordinal response distribution can materially alter substantive conclusions regarding the magnitude and distribution of treatment effects.
+This paper develops a flexible likelihood-based framework for estimating causal effects with ordinal outcomes. The proposed estimator employs conditional normalizing flows to model the conditional response distribution without imposing a fixed parametric latent error distribution. Unlike existing semiparametric estimators, the framework remains computationally feasible with high-dimensional covariates while preserving exact likelihood-based inference. A single estimation procedure spans classical latent-index models, generalized latent-index specifications, and fully nonparametric conditional response distributions, allowing researchers to balance structural assumptions and modeling flexibility while targeting the same probability-based causal quantities.
+
+I evaluate the proposed framework through Monte Carlo simulations designed to reflect empirically realistic survey settings, including polarized latent attitudes, nonlinear treatment-response relationships, and non-Gaussian latent error distributions. Across these settings, the proposed estimator maintains low bias while conventional ordered response models exhibit substantial distortions in estimated probability effects. I then revisit the survey experiments of \citet{Tomz2020a} and \citet{Mattingly2025a}, showing that flexible estimation of the ordinal response distribution can materially alter substantive conclusions regarding the magnitude and distribution of treatment effects.
 
 The remainder of the paper proceeds as follows. Section~\ref{sec:causal_ordinal} formalizes causal inference with ordinal outcomes and motivates distributional causal estimands. Section~\ref{sec:estimation} reviews existing estimation approaches and introduces the proposed likelihood-based framework. Section~\ref{sec:simulation} evaluates finite-sample performance through Monte Carlo simulations. Section~\ref{sec:application} presents the empirical applications. Section~\ref{sec:conclusion} concludes.
+
+\clearpage
+
+
 
 \section{Causal Inference with Ordinal Outcomes}
 \label{sec:causal_ordinal}
 
-
+This section develops the conceptual framework underlying the remainder of the paper. I begin by describing ordinal survey responses as measurements of an underlying latent attitude using the classical threshold-crossing model. I then revisit a well-known identification result showing that latent treatment effects are identified only up to location and scale, and discuss its implications for causal inference with ordinal outcomes. Finally, I introduce distributional causal estimands that are directly identified from observed ordinal responses and motivate the estimation framework developed in the next section.
 
 \subsection{Latent Outcomes, Ordinal Responses, and Causal Effects}
 \label{subsec:setup}
 
-Many quantities of interest in political science, such as support for redistribution \citep{Alt2017a, Magni2021a}, immigration preferences \citep{Mayda2005a}, trust in institutions, and foreign policy attitudes \citep{Scheve2001r, Tomz2020a}, are naturally viewed as continuous latent constructs. Survey respondents, however, rarely report these attitudes on a continuous scale. Instead, researchers observe ordinal responses, such as Likert items ranging from \textit{strongly disagree} to \textit{strongly agree}, ordered approval categories, or frequency scales. Consequently, empirical analyses are conducted using outcomes that preserve the ordering of respondents’ attitudes but not the distances between adjacent response categories.
-
-Following the classical ordered response framework, let $Y_i^\ast$ denote respondent $i$’s latent attitude and let $Y_i \in \{0,1,\ldots,J\}$ denote the observed ordinal response. We assume that the observed response is generated through a threshold-crossing mechanism,
-
-\[
-Y_i=j
-\quad\Longleftrightarrow\quad
-\alpha_{j-1}<Y_i^\ast\le\alpha_j,
-\qquad
-j=0,\ldots,J,
-\]
-
-where
-
-\[
--\infty=\alpha_{-1}<\alpha_0<\cdots<\alpha_J=\infty
-\]
-
-are unknown thresholds partitioning the latent scale. Figure~\ref{fig:latent} illustrates this measurement process. Throughout the main text, I assume respondents share a common reporting function. Section~XX discusses extensions allowing reporting thresholds to vary across respondents following generalized ordered response models \citep{Williams2006a}. Alternative survey designs, such as anchored vignettes \citep{King2004a, King2007a}, provide complementary approaches for addressing heterogeneous reporting behavior.
-
-
+% fig:latent {{{
 \begin{figure}[ht]
 \centering
 \begin{tikzpicture}[>=stealth,scale=1]
@@ -131,53 +117,26 @@ coordinates{
 \caption{Ordinal responses arise by partitioning an underlying latent attitude into ordered response categories. The observed data identify how treatment changes probabilities of falling into response categories, but not the absolute scale of the latent attitude.}
 \label{fig:latent}
 \end{figure}
+% }}}
 
-\begin{figure}[ht]
-\centering
+Many quantities of interest in political science, such as support for redistribution \citep{Alt2017a, Magni2021a}, immigration preferences \citep{Mayda2005a}, trust in institutions, and foreign policy attitudes \citep{Scheve2001r, Tomz2020a}, are naturally viewed as continuous latent constructs. Survey respondents, however, rarely report these attitudes on a continuous scale. Instead, researchers observe ordinal responses, such as Likert items ranging from \textit{strongly disagree} to \textit{strongly agree}, ordered approval categories, or frequency scales. Consequently, empirical analyses are conducted using outcomes that preserve the ordering of respondents’ attitudes but not the distances between adjacent response categories.
 
-\begin{tikzpicture}[>=stealth]
+Following the classical ordered response framework, let $Y_i^\ast$ denote respondent $i$’s latent attitude and let $Y_i\in{0,1,\ldots,J}$ denote the observed ordinal response. The observed response is generated through a threshold-crossing mechanism,
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Panel A
-%%%%%%%%%%%%%%%%%%%%%%%%%%
+\[
+Y_i=j \quad\Longleftrightarrow\quad \alpha_{j-1}<Y_i^\ast\le\alpha_j,
+\qquad j=0,\ldots,J,
+\]
 
-\node at (0,2.2) {\textbf{Latent Scale A}};
+where
 
-\draw[->] (-4,1.2) -- (4,1.2);
+\[
+-\infty=\alpha_{-1}<\alpha_0<\cdots<\alpha_J=\infty
+\]
 
-\foreach \x in {-2,-0.5,1,2.5}
-    \draw (\x,1.0)--(\x,1.4);
+are unknown thresholds partitioning the latent scale. Figure~\ref{fig:latent} illustrates this measurement process. Throughout the paper I assume respondents share a common reporting function. Section~XX discusses extensions allowing reporting thresholds to vary across respondents following generalized ordered response models \citep{Williams2006a}. Alternative survey designs, such as anchored vignettes \citep{King2004a, King2007a}, provide complementary approaches for addressing heterogeneous reporting behavior.
 
-\node at (-3,1.7) {\small SD};
-\node at (-1.2,1.7) {\small D};
-\node at (0.3,1.7) {\small N};
-\node at (1.8,1.7) {\small A};
-\node at (3.3,1.7) {\small SA};
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Panel B
-%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-\node at (0,-0.2) {\textbf{Latent Scale B (Affine Transformation)}};
-
-\draw[->] (-4,-1.2) -- (4,-1.2);
-
-\foreach \x in {-3,-1,1.5,3}
-    \draw (\x,-1.4)--(\x,-1.0);
-
-\node at (-3.5,-0.7) {\small SD};
-\node at (-2,-0.7) {\small D};
-\node at (0.2,-0.7) {\small N};
-\node at (2.2,-0.7) {\small A};
-\node at (3.6,-0.7) {\small SA};
-
-\end{tikzpicture}
-
-\caption{Different latent scales and thresholds can generate the same observed ordinal responses. Consequently, the absolute location and scale of the latent attitude are not identified from ordinal data alone.}
-\label{fig:identification}
-\end{figure}
-
-In this paper, the threshold-crossing representation serves as a measurement model linking latent attitudes to observed ordinal responses. It formalizes the idea that observed response categories preserve the ordering of respondents’ attitudes while discarding information about the distances between adjacent categories. Consequently, many different latent scales can induce exactly the same observed ordinal responses. Figure~\ref{fig:identification} illustrates this idea. Although the two panels correspond to different latent scales and threshold values, they generate the same observed response categories. The observed data therefore preserve the ordering of latent attitudes but not their absolute scale.
+The threshold-crossing representation should be interpreted as a measurement model rather than a structural model. It formalizes the idea that ordinal responses preserve the ordering of the underlying attitudes while discarding information about the distances between adjacent categories. Consequently, the observed responses provide only partial information about the latent construct: they reveal which interval of the latent scale a respondent occupies, but not the respondent’s exact location within that interval.
 
 To describe causal effects, let $Y_i^\ast(d)$ denote the latent potential outcome under treatment level $d$, and let
 
@@ -185,117 +144,55 @@ To describe causal effects, let $Y_i^\ast(d)$ denote the latent potential outcom
 Y_i(d)=g\left(Y_i^\ast(d)\right)
 \]
 
-denote the corresponding observed ordinal potential outcome. I adopt the standard potential-outcomes framework and assume the usual conditions of SUTVA, conditional ignorability, and positivity \citep{Rubin1974a}. If the latent outcome $Y_i^\ast$ were directly observed, these assumptions would suffice to identify conventional causal estimands such as the average treatment effect on the latent attitude,
+denote the corresponding observed ordinal potential outcome. Throughout the paper I adopt the standard assumptions of SUTVA, conditional ignorability, and positivity \citep{Rubin1974a}. If the latent outcome $Y_i^\ast$ were directly observed, these assumptions would suffice to identify conventional causal estimands such as
 
 \[
-ATE^\ast = \mathbb{E}\left[Y_i^\ast(1)-Y_i^\ast(0)\right].
+ATE^\ast = \mathbb{E} = \left[ Y_i^\ast(1)-Y_i^\ast(0) \right].
 \]
 
-In practice, however, researchers observe only the ordinal response $Y_i$. The central challenge is therefore not whether treatment effects are causally identified, but whether the observed ordinal responses contain sufficient information to identify treatment effects on the underlying latent attitude. The next subsection revisits the classical identification result for ordered response models and shows how it motivates alternative causal estimands defined directly on the observed ordinal responses.
+In practice, however, researchers observe only the ordinal response $Y_i$. The central question is therefore not whether causal effects are identified, but which causal quantities remain identified once the underlying latent attitude is observed only through ordered response categories. The next subsection revisits the classical identification result for ordinal response models and uses it to distinguish between causal quantities that require additional measurement assumptions and those that do not.
 
 \subsection{Identification of Causal Effects from Ordinal Outcomes}
 \label{subsec:identification}
 
-The threshold-crossing framework provides a convenient representation of ordinal outcomes, but it also reveals a fundamental limitation of what can be learned from ordinal data. A classical result in the ordered response literature is that the latent-variable model is identified only up to location and scale. Although this normalization is routine in econometrics and psychometrics, its implications for causal inference are rarely made explicit in applied political science. In particular, survey experiments frequently interpret treatment effects estimated from numerically coded ordinal outcomes as effects on an underlying latent attitude without discussing the measurement assumptions required for such an interpretation.
+The threshold-crossing framework provides a useful representation of ordinal outcomes, but it also reveals a fundamental limitation of what can be learned from ordinal data. A classical result in the ordered response literature is that latent-variable models are identified only up to location and scale. Although this normalization is standard in econometrics and psychometrics, its implications for causal inference have received comparatively little attention in applied political science. In particular, survey experiments frequently interpret treatment effects estimated from numerically coded ordinal responses as effects on an underlying latent attitude without making explicit the measurement assumptions required for such an interpretation.
 
-To formalize this point, suppose the latent potential outcome satisfies the partially linear structural equation
+To formalize this point, suppose the latent outcome satisfies
 
 \[
 Y_i^\ast = h(X_i,\beta) + D_i^\top\tau + \varepsilon_i,
 \]
 
-where $h(X_i,\beta)$ is an unknown systematic component, $\tau$ denotes the treatment effect on the latent scale, and $\varepsilon_i$ has cumulative distribution function $F$. Under the threshold-crossing measurement model introduced above, the probability of observing category $j$ is
+where $h(X_i,\beta)$ denotes the systematic component of the latent outcome, $\tau$ is the treatment effect on the latent scale, and $\varepsilon_i$ has cumulative distribution function $F$. Combining this latent-index specification with the threshold-crossing measurement model implies
 
 \[
 \begin{aligned}
-P(Y_i=j\mid X_i,D_i)
-&=
-F\left( \alpha_j - h(X_i,\beta) - D_i^\top\tau \right) \\
-&\qquad -
-F\left( \alpha_{j-1} - h(X_i,\beta) - D_i^\top\tau \right).
+  P(Y_i=j\mid X_i,D_i) &= F\left( \alpha_j-h(X_i,\beta)-D_i^\top\tau \right) \\
+   &= F\left( \alpha_{j-1}-h(X_i,\beta)-D_i^\top\tau \right). \\
 \end{aligned}
 \]
 
-Now consider any constants $a\in\mathbb{R}$ and $c>0$, and define
+Now consider any constants $a\in\mathbb{R}$ and $c>0$, and define a transformed latent outcome
 
 \[
 \tilde Y_i^\ast = a+cY_i^\ast,
-\qquad
+\]
+
+together with transformed thresholds
+
+\[
 \tilde\alpha_j = a+c\alpha_j.
 \]
 
-The transformed latent variable satisfies
-
-\[
-\tilde Y_i^\ast = h(X_i,\tilde\beta) + D_i^\top\tilde\tau + \tilde\varepsilon_i,
-\]
-
-where, for linear $h$, $\tilde\beta=c\beta$, $\tilde\tau=c\tau$, and $\tilde\varepsilon_i=c\varepsilon_i$. Because the thresholds and latent scale are transformed together, the induced probabilities of the observed ordinal responses remain unchanged.
+Because both the latent outcome and the thresholds are transformed simultaneously, the probabilities of the observed ordinal responses remain unchanged.
 
 \begin{theorem}[Location and Scale Nonidentification]
 Under the threshold-crossing latent-variable model, any positive affine transformation of the latent outcome and thresholds generates the same distribution of the observed ordinal responses. Consequently, treatment effects on the latent outcome are identified only up to location and scale.
 \end{theorem}
 
-Theorem~1 is not a failure of the experimental or quasi-experimental design. Under the standard assumptions of SUTVA, conditional ignorability, and positivity, causal effects remain identified for any well-defined outcome. Rather, the theorem highlights a measurement problem: ordinal responses do not uniquely determine the cardinal scale of the underlying latent attitude. The challenge therefore lies not in the experimental design but in the relationship between the observed ordinal responses and the unobserved latent construct.
+Theorem~1 should not be interpreted as a failure of causal identification. Under the standard assumptions of SUTVA, conditional ignorability, and positivity, causal effects remain identified for any well-defined outcome. Rather, the theorem highlights a measurement problem. Ordinal responses preserve the ordering of latent attitudes but do not reveal the cardinal scale on which those attitudes are measured. Consequently, causal quantities defined on the latent scale require additional measurement assumptions beyond those needed for causal identification itself.
 
-\begin{table}[ht]
-\centering
-\small
-\begin{tabular}{p{4.2cm}p{5.4cm}p{3.5cm}}
-\hline
-\textbf{Causal Quantity} &
-\textbf{Scientific Interpretation} &
-\textbf{Requires Additional Measurement Assumptions?} \\
-\hline
-
-Latent average treatment effect
-$E[Y^\ast(1)-Y^\ast(0)]$
-
-&
-Average change in the underlying latent attitude.
-
-&
-Yes
-\\[1em]
-
-Cardinalized average treatment effect
-$E[s(Y(1))-s(Y(0))]$
-
-&
-Average change after assigning numerical scores to ordinal categories.
-
-&
-Yes
-\\[1em]
-
-Category probability effect
-$P(Y(1)=j)-P(Y(0)=j)$
-
-&
-Change in the probability of observing category $j$.
-
-&
-No
-\\[1em]
-
-Cumulative probability effect
-$P(Y(1)\ge j)-P(Y(0)\ge j)$
-
-&
-Change in the probability of responding at or above category $j$.
-
-&
-No
-\\
-
-\hline
-\end{tabular}
-
-\caption{Common causal quantities for ordinal outcomes. Distributional causal effects are defined directly on the observed ordinal responses and therefore do not require assumptions about the cardinal scale of the latent attitude.}
-\label{tab:estimands}
-\end{table}
-
-The identification result has an important implication for empirical practice. Different analyses of ordinal outcomes target different causal quantities and therefore require different measurement assumptions. Table~\ref{tab:estimands} summarizes the most common estimands. Latent treatment effects require assumptions that identify a cardinal latent scale, while treatment effects computed from numerically coded outcomes depend on the chosen scoring rule. Distributional causal effects, by contrast, are defined directly on the observed ordinal responses and therefore do not require assumptions about the cardinal spacing of the latent attitude. The next subsection formalizes these estimands and discusses their substantive interpretation.
+This distinction has immediate implications for empirical practice. Different analyses of ordinal outcomes target different causal quantities and therefore rely on different measurement assumptions. For example, assigning numerical scores to ordinal categories and estimating mean differences implicitly assumes that those scores provide a meaningful cardinal representation of the latent attitude. By contrast, causal quantities defined directly on the observed ordinal responses do not require assumptions about the cardinal spacing between adjacent categories. The next subsection formalizes these probability-based causal estimands and shows how they arise naturally from the observed ordinal response distribution.
 
 
 \subsection{Distributional Causal Estimands}
