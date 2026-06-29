@@ -1,62 +1,98 @@
 # ========================= ordinal_flow_core.py =========================
+
+from __future__ import annotations
+
 import math
+from typing import Dict, Optional, Tuple
+
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Normal
-from scipy import stats
 from nflows.transforms.splines.rational_quadratic import (
     unconstrained_rational_quadratic_spline as uRQS,
 )
-from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
+from nflows.transforms.autoregressive import (
+    MaskedPiecewiseRationalQuadraticAutoregressiveTransform,
+)
 from nflows.distributions.normal import StandardNormal
 from nflows.flows import Flow
 from statsmodels.miscmodels.ordinal_model import OrderedModel
 
-# ----------------------------------------------------------------------
-# Numeric Helpers
-# ----------------------------------------------------------------------
 torch.set_default_dtype(torch.float64)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SQRT2 = math.sqrt(2.0)
 LOG_HALF = math.log(0.5)
 
-def softplus_inv(y):
+
+def softplus_inv(y: torch.Tensor) -> torch.Tensor:
     eps = 1e-12
     y = torch.clamp(y, min=eps)
     return torch.log(torch.expm1(y))
 
-def log_ndtr(z):
-    return LOG_HALF + torch.log(torch.special.erfc(-z / SQRT2))
 
-def log_surv_ndtr(z):
-    return LOG_HALF + torch.log(torch.special.erfc(z / SQRT2))
+def normalize_probs(p: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    p = np.asarray(p, dtype=float)
+    p = np.clip(p, eps, 1.0)
+    return p / p.sum(axis=1, keepdims=True)
 
-def log_diff_normal_cdfs(zl, zu):
-    assert zl.shape == zu.shape
-    left_mask = (zu <= 0) & (zl <= 0)
-    right_mask = (zu >= 0) & (zl >= 0)
-    mid_mask = ~(left_mask | right_mask)
-    out = torch.empty_like(zu)
 
-    if left_mask.any():
-        a = log_ndtr(zu[left_mask])
-        b = log_ndtr(zl[left_mask])
-        out[left_mask] = a + torch.log1p(-torch.exp(b - a))
+def category_effect_from_probs(p1: np.ndarray, p0: np.ndarray) -> np.ndarray:
+    p1 = normalize_probs(p1)
+    p0 = normalize_probs(p0)
+    return np.mean(p1 - p0, axis=0)
 
-    if right_mask.any():
-        a = log_surv_ndtr(zl[right_mask])
-        b = log_surv_ndtr(zu[right_mask])
-        out[right_mask] = a + torch.log1p(-torch.exp(b - a))
 
-    if mid_mask.any():
-        phi_u = Normal(0.0, 1.0).cdf(zu[mid_mask])
-        phi_l = Normal(0.0, 1.0).cdf(zl[mid_mask])
-        diff = torch.clamp(phi_u - phi_l, min=1e-300)
-        out[mid_mask] = torch.log(diff)
-    return out
+def cumulative_ge_from_probs(p: np.ndarray) -> np.ndarray:
+    p = normalize_probs(p)
+    return np.cumsum(p[:, ::-1], axis=1)[:, ::-1]
+
+
+def cumulative_ge_effect_from_probs(p1: np.ndarray, p0: np.ndarray) -> np.ndarray:
+    return np.mean(cumulative_ge_from_probs(p1) - cumulative_ge_from_probs(p0), axis=0)
+
+
+def wasserstein_unit_from_probs(p1: np.ndarray, p0: np.ndarray) -> float:
+    p1_bar = normalize_probs(p1).mean(axis=0)
+    p0_bar = normalize_probs(p0).mean(axis=0)
+    cdf1 = np.cumsum(p1_bar)
+    cdf0 = np.cumsum(p0_bar)
+    return float(np.sum(np.abs(cdf1[:-1] - cdf0[:-1])))
+
+def effects_from_counterfactual_probs(p1: np.ndarray, p0: np.ndarray) -> Dict[str, object]:
+    p1 = normalize_probs(p1)
+    p0 = normalize_probs(p0)
+    return {
+        "category_effect": category_effect_from_probs(p1, p0),
+        "cum_ge_effect": cumulative_ge_effect_from_probs(p1, p0),
+        "wasserstein_unit": wasserstein_unit_from_probs(p1, p0),
+    }
+
+
+def empirical_probs_by_treatment(y: np.ndarray, d: np.ndarray, J: Optional[int] = None) -> Dict[str, np.ndarray]:
+    y = np.asarray(y, dtype=int)
+    d = np.asarray(d, dtype=int)
+    if J is None:
+        J = int(np.max(y))
+
+    p = {}
+    for val in [0, 1]:
+        mask = d == val
+        if not np.any(mask):
+            raise ValueError(f"No observations with D={val}")
+        p[val] = np.array([(y[mask] == j).mean() for j in range(1, J + 1)], dtype=float)
+
+    p0 = np.tile(p[0], (len(y), 1))
+    p1 = np.tile(p[1], (len(y), 1))
+    return {
+        "p0": p[0],
+        "p1": p[1],
+        "category_effect": p[1] - p[0],
+        "cum_ge_effect": cumulative_ge_effect_from_probs(p1, p0),
+        "wasserstein_unit": wasserstein_unit_from_probs(p1, p0),
+    }
 
 # ----------------------------------------------------------------------
 # Global 1D RQS Transform
@@ -233,30 +269,6 @@ class OrderedFlowModel(nn.Module):
         return -torch.sum(torch.log(p_y))
 
     @torch.no_grad()
-    def project_identification(self, mc_samples=32768):
-        """
-        Normalize scale and location of unobserved error strictly ex-post.
-        """
-        z = self.flow.sample_base(mc_samples).to(self.beta.device)
-        eps_base = self.flow.forward(z)
-        eps = self.a() * eps_base + self.b
-        m = eps.mean()
-        s = torch.clamp(eps.std(unbiased=False), min=1e-4)
-
-        # Re-scale parameters ex-post
-        self.beta.data = (self.beta / s).detach()
-        self.alpha1_intercept.data = ((self.alpha1_intercept - m) / s).detach()
-        if self.J > 2:
-            gaps = torch.nn.functional.softplus(self.gap_intercepts_raw) + self.min_gap
-            gaps_new = torch.clamp(gaps / s - self.min_gap, min=1e-8) + self.min_gap
-            self.gap_intercepts_raw.data = softplus_inv(gaps_new - self.min_gap).detach()
-        if self.q > 0:
-            if self.alpha1_gamma is not None:
-                self.alpha1_gamma.data = (self.alpha1_gamma / s).detach()
-            if self.gap_gammas is not None:
-                self.gap_gammas.data = (self.gap_gammas / s).detach()
-
-    @torch.no_grad()
     def init_from_ordered_probit(self, X, y, Z=None, verbose=True):
         y0 = y.cpu().numpy().astype(int) - 1
         X_np = X.cpu().numpy()
@@ -283,33 +295,40 @@ class OrderedFlowModel(nn.Module):
 
         self._probit_nll = float(-res.llf)
 
-    @torch.no_grad()
-    def compute_ame(self, X, treatment_idx, Z=None):
-        X1 = X.clone()
-        X1[:, treatment_idx] = 1.0
-        X0 = X.clone()
-        X0[:, treatment_idx] = 0.0
-        
-        p1 = self.predict_proba(X1, Z).cpu().numpy()
-        p0 = self.predict_proba(X0, Z).cpu().numpy()
-        return np.mean(p1 - p0, axis=0)
+    
 
     @torch.no_grad()
-    def compute_concordance_prob(self, X, treatment_idx, Z=None):
+    def latent_coefficients(self, names: Optional[list[str]] = None) -> pd.Series:
+        beta = self.beta.detach().cpu().numpy()
+        if names is None:
+            names = [f"x{k}" for k in range(len(beta))]
+        return pd.Series(beta, index=names, name="structured_flow_beta")
+    
+    @torch.no_grad()
+    def counterfactual_probs(self, X: torch.Tensor, treatment_idx: int = 0, Z: Optional[torch.Tensor] = None):
+        X = X.to(device=device, dtype=torch.float64)
         X1 = X.clone()
-        X1[:, treatment_idx] = 1.0
         X0 = X.clone()
+        X1[:, treatment_idx] = 1.0
         X0[:, treatment_idx] = 0.0
-        
-        p1 = self.predict_proba(X1, Z)
-        p0 = self.predict_proba(X0, Z)
-        
-        cum_p0 = torch.cumsum(p0, dim=1)
-        cum_p1 = torch.cumsum(p1, dim=1)
-        
-        p_superior = torch.sum(p1[:, 1:] * cum_p0[:, :-1], dim=1)
-        p_inferior = torch.sum(p0[:, 1:] * cum_p1[:, :-1], dim=1)
-        return float(torch.mean(p_superior - p_inferior).cpu().item())
+        p1 = self.predict_proba(X1, Z).cpu().numpy()
+        p0 = self.predict_proba(X0, Z).cpu().numpy()
+        return p1, p0
+
+    @torch.no_grad()
+    def compute_ame(self, X: torch.Tensor, treatment_idx: int = 0, Z: Optional[torch.Tensor] = None) -> np.ndarray:
+        p1, p0 = self.counterfactual_probs(X, treatment_idx=treatment_idx, Z=Z)
+        return category_effect_from_probs(p1, p0)
+
+    @torch.no_grad()
+    def compute_cumulative_ge_effect(self, X: torch.Tensor, treatment_idx: int = 0, Z: Optional[torch.Tensor] = None) -> np.ndarray:
+        p1, p0 = self.counterfactual_probs(X, treatment_idx=treatment_idx, Z=Z)
+        return cumulative_ge_effect_from_probs(p1, p0)
+
+    @torch.no_grad()
+    def compute_wasserstein_unit(self, X: torch.Tensor, treatment_idx: int = 0, Z: Optional[torch.Tensor] = None) -> float:
+        p1, p0 = self.counterfactual_probs(X, treatment_idx=treatment_idx, Z=Z)
+        return wasserstein_unit_from_probs(p1, p0)
 
 # ----------------------------------------------------------------------
 # Model-Free Conditional Normalizing Flow Model (CNF)
@@ -401,28 +420,28 @@ class ModelFreeConditionalFlowModel(nn.Module):
         return -torch.sum(torch.log(p_y))
 
     @torch.no_grad()
-    def compute_ame(self, X):
+    def counterfactual_probs(self, X: torch.Tensor):
         n = X.shape[0]
-        D1 = torch.ones(n, device=X.device)
-        D0 = torch.zeros(n, device=X.device)
+        D1 = torch.ones(n, device=X.device, dtype=X.dtype)
+        D0 = torch.zeros(n, device=X.device, dtype=X.dtype)
         p1 = self.predict_proba(X, D1).cpu().numpy()
         p0 = self.predict_proba(X, D0).cpu().numpy()
-        return np.mean(p1 - p0, axis=0)
+        return p1, p0
 
     @torch.no_grad()
-    def compute_concordance_prob(self, X):
-        n = X.shape[0]
-        D1 = torch.ones(n, device=X.device)
-        D0 = torch.zeros(n, device=X.device)
-        p1 = self.predict_proba(X, D1)
-        p0 = self.predict_proba(X, D0)
-        
-        cum_p0 = torch.cumsum(p0, dim=1)
-        cum_p1 = torch.cumsum(p1, dim=1)
-        
-        p_superior = torch.sum(p1[:, 1:] * cum_p0[:, :-1], dim=1)
-        p_inferior = torch.sum(p0[:, 1:] * cum_p1[:, :-1], dim=1)
-        return float(torch.mean(p_superior - p_inferior).cpu().item())
+    def compute_ame(self, X: torch.Tensor) -> np.ndarray:
+        p1, p0 = self.counterfactual_probs(X)
+        return category_effect_from_probs(p1, p0)
+
+    @torch.no_grad()
+    def compute_cumulative_ge_effect(self, X: torch.Tensor) -> np.ndarray:
+        p1, p0 = self.counterfactual_probs(X)
+        return cumulative_ge_effect_from_probs(p1, p0)
+
+    @torch.no_grad()
+    def compute_wasserstein_unit(self, X: torch.Tensor) -> float:
+        p1, p0 = self.counterfactual_probs(X)
+        return wasserstein_unit_from_probs(p1, p0)
 
 # ----------------------------------------------------------------------
 # Model Training Routines
@@ -488,8 +507,6 @@ def train_ordered_flow(X, y, Z=None, flow_bins=16, bounds=10.0, epochs=200, lr=1
 
     if baseline_state is not None:
         model.load_state_dict(baseline_state)
-
-    model.project_identification(mc_samples=32768)
     return model
 
 
@@ -556,69 +573,49 @@ def train_model_free_flow(X, y, D, flow_bins=12, bounds=10.0, epochs=200, lr=1e-
 # ----------------------------------------------------------------------
 # Standard Statsmodels Baseline Fits
 # ----------------------------------------------------------------------
-def fit_ordered_sm(y, X, link='probit', normalize=True, norm_criterion='variance'):
+def fit_ordered_sm(y: torch.Tensor, X: torch.Tensor, link: str = "probit", normalize: bool = True, norm_criterion: str = "variance"):
     y0 = y.detach().cpu().numpy().astype(int) - 1
     X_np = X.detach().cpu().numpy()
-    J = np.unique(y0).size
     cols = [f"x{k}" for k in range(X_np.shape[1])]
     dfX = pd.DataFrame(X_np, columns=cols)
-    distr = 'probit' if link == 'probit' else 'logit'
+    distr = "probit" if link == "probit" else "logit"
     mod = OrderedModel(y0, dfX, distr=distr)
-    res = mod.fit(method='bfgs', disp=False)
+    res = mod.fit(method="bfgs", disp=False)
 
     params = res.params
-    if hasattr(params, 'index'):
-        beta_hat = params[cols].values
-        thr = params.values[-(J - 1):]
-    else:
-        p = X_np.shape[1]
-        beta_hat = params[:p]
-        thr = params[-(J - 1):]
+    beta_hat = params[cols].values.astype(float)
+    thr = params.values[-(len(np.unique(y0)) - 1):].astype(float)
 
-    if normalize:
-        if link == 'logit':
-            s_link = math.pi / math.sqrt(3.0) if norm_criterion == 'variance' else 1.6
-            beta_hat = beta_hat / s_link
-            thr = thr / s_link
-    return beta_hat, thr, res
+    beta_report = beta_hat.copy()
+    thr_report = thr.copy()
+    if normalize and link == "logit":
+        s_link = math.pi / math.sqrt(3.0) if norm_criterion == "variance" else 1.6
+        beta_report = beta_report / s_link
+        thr_report = thr_report / s_link
+
+    return beta_report, thr_report, res
 
 
-# ----------------------------------------------------------------------
-# True Error Specifications
-# ----------------------------------------------------------------------
-def get_true_error(spec: str):
-    spec = spec.lower()
-    if spec == "normal":
-        StdN = torch.distributions.Normal(0.0, 1.0)
-        def sample_eps(n): return StdN.sample((n,)).to(device)
-        def true_cdf_std(e): return StdN.cdf(e)
-        def true_pdf_std(e): return torch.exp(StdN.log_prob(e))
-        label = "Standard Normal"
-        m, s = 0.0, 1.0
-    elif spec == "lognormal":
-        mu, sigma = 0.0, 1.0
-        m = math.exp(mu + 0.5 * sigma**2)
-        v = (math.exp(sigma**2) - 1.0) * math.exp(2 * mu + sigma**2)
-        s = math.sqrt(v)
-        def sample_eps(n):
-            z = torch.randn(n, device=device)
-            return torch.exp(mu + sigma * z)
-        def F_base(x):
-            out = torch.zeros_like(x)
-            mask = x > 0
-            if mask.any():
-                out[mask] = Normal(0.0, 1.0).cdf((torch.log(x[mask]) - mu) / sigma)
-            return out
-        def f_base(x):
-            out = torch.zeros_like(x)
-            mask = x > 0
-            if mask.any():
-                xm = x[mask]
-                out[mask] = torch.exp(-0.5 * ((torch.log(xm) - mu) / sigma) ** 2) / (xm * sigma * math.sqrt(2 * math.pi))
-            return out
-        def true_cdf_std(e): return F_base(m + s * e)
-        def true_pdf_std(e): return s * f_base(m + s * e)
-        label = "Log-normal standardized"
-    else:
-        raise ValueError("Unknown true error spec")
-    return sample_eps, true_cdf_std, true_pdf_std, label, m, s
+def predict_ordered_sm(res, X: torch.Tensor | np.ndarray) -> np.ndarray:
+    X_np = X.detach().cpu().numpy() if isinstance(X, torch.Tensor) else np.asarray(X, dtype=float)
+    cols = [f"x{k}" for k in range(X_np.shape[1])]
+    dfX = pd.DataFrame(X_np, columns=cols)
+    probs = np.asarray(res.model.predict(res.params, exog=dfX), dtype=float)
+    return normalize_probs(probs)
+
+
+def counterfactual_probs_ordered_sm(res, X: torch.Tensor | np.ndarray, treatment_idx: int = 0):
+    X_np = X.detach().cpu().numpy() if isinstance(X, torch.Tensor) else np.asarray(X, dtype=float)
+    X1 = X_np.copy()
+    X0 = X_np.copy()
+    X1[:, treatment_idx] = 1.0
+    X0[:, treatment_idx] = 0.0
+    return predict_ordered_sm(res, X1), predict_ordered_sm(res, X0)
+
+
+def ordered_sm_effects(res, X: torch.Tensor | np.ndarray, treatment_idx: int = 0) -> Dict[str, object]:
+    p1, p0 = counterfactual_probs_ordered_sm(res, X, treatment_idx=treatment_idx)
+    out = effects_from_counterfactual_probs(p1, p0)
+    out["p1"] = p1
+    out["p0"] = p0
+    return out

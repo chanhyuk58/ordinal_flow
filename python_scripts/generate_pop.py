@@ -1,4 +1,4 @@
-# Generate finite populations for ordinal-outcome Monte Carlo simulations.
+# =========================== generate_pop.py ===========================
 
 from __future__ import annotations
 
