@@ -245,6 +245,44 @@ def compute_truth(y0: np.ndarray, y1: np.ndarray, J: int) -> Dict[str, object]:
         "net_improvement_joint_only": net_improvement,
     }
 
+def summarize_population(
+    y_star0: np.ndarray,
+    y_star1: np.ndarray,
+    eps0: np.ndarray,
+    eps1: np.ndarray,
+    y0: np.ndarray,
+    y1: np.ndarray,
+) -> Dict[str, float]:
+    """Basic finite-population summaries for documenting each DGP."""
+    def moments(x: np.ndarray, prefix: str) -> Dict[str, float]:
+        x = np.asarray(x, dtype=float)
+        mu = float(np.mean(x))
+        sd = float(np.std(x))
+        centered = x - mu
+        if sd <= 0:
+            skew = np.nan
+            kurt = np.nan
+        else:
+            skew = float(np.mean((centered / sd) ** 3))
+            kurt = float(np.mean((centered / sd) ** 4))
+        return {
+            f"{prefix}_mean": mu,
+            f"{prefix}_sd": sd,
+            f"{prefix}_skewness": skew,
+            f"{prefix}_kurtosis": kurt,
+        }
+
+    out = {}
+    out.update(moments(y_star0, "y_star0"))
+    out.update(moments(y_star1, "y_star1"))
+    out.update(moments(eps0, "eps0"))
+    out.update(moments(eps1, "eps1"))
+
+    out["share_improved_category"] = float(np.mean(y1 > y0))
+    out["share_worsened_category"] = float(np.mean(y0 > y1))
+    out["share_unchanged_category"] = float(np.mean(y1 == y0))
+    return out
+
 
 def generate_population(cfg: DGPConfig, N: int, seed: int) -> Tuple[pd.DataFrame, Dict[str, object]]:
     rng = np.random.default_rng(seed)
@@ -288,8 +326,27 @@ def generate_population(cfg: DGPConfig, N: int, seed: int) -> Tuple[pd.DataFrame
 
     for k, thr in enumerate(thresholds, start=1):
         df[f"thr{k}"] = thr
-
+    
     truth = compute_truth(y0, y1, cfg.J)
+    
+    latent = {
+        "tau": float(cfg.tau),
+        "thresholds": list(cfg.thresholds),
+        "error_type": cfg.error_type,
+        "h_type": cfg.h_type,
+        "p": int(cfg.p),
+        "J": int(cfg.J),
+    }
+    
+    population_summary = summarize_population(
+        y_star0=y_star0,
+        y_star1=y_star1,
+        eps0=eps0,
+        eps1=eps1,
+        y0=y0,
+        y1=y1,
+    )
+    
     meta = {
         "setting": cfg.setting,
         "description": cfg.description,
@@ -303,6 +360,8 @@ def generate_population(cfg: DGPConfig, N: int, seed: int) -> Tuple[pd.DataFrame
         "h_type": cfg.h_type,
         "favorable_to_nf": bool(cfg.favorable_to_nf),
         "truth": truth,
+        "latent": latent,
+        "population_summary": population_summary,
     }
     return df, meta
 
