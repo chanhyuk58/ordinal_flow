@@ -41,14 +41,14 @@ This paper develops a flexible likelihood-based framework for estimating causal 
 
 I evaluate the proposed framework through Monte Carlo simulations designed to reflect empirically realistic survey settings, including polarized latent attitudes, nonlinear treatment-response relationships, and non-Gaussian latent error distributions. Across these settings, the proposed estimator maintains low bias while conventional ordered response models exhibit substantial distortions in estimated probability effects. I then revisit the survey experiments of \citet{Tomz2020a} and \citet{Mattingly2025a}, showing that flexible estimation of the ordinal response distribution can materially alter substantive conclusions regarding the magnitude and distribution of treatment effects.
 
-The remainder of the paper proceeds as follows. Section~\ref{sec:causal_ordinal} formalizes causal inference with ordinal outcomes and motivates distributional causal estimands. Section~\ref{sec:estimation} reviews existing estimation approaches and introduces the proposed likelihood-based framework. Section~\ref{sec:simulation} evaluates finite-sample performance through Monte Carlo simulations. Section~\ref{sec:application} presents the empirical applications. Section~\ref{sec:conclusion} concludes.
+The remainder of the paper proceeds as follows. Section~\ref{sec:causalordinal} formalizes causal inference with ordinal outcomes and motivates distributional causal estimands. Section~\ref{sec:estimation} reviews existing estimation approaches and introduces the proposed likelihood-based framework. Section~\ref{sec:simulation} evaluates finite-sample performance through Monte Carlo simulations. Section~\ref{sec:application} presents the empirical applications. Section~\ref{sec:conclusion} concludes.
 
 \clearpage
 
 
 
 \section{Causal Inference with Ordinal Outcomes}
-\label{sec:causal_ordinal}
+\label{sec:causalordinal}
 
 This section develops the conceptual framework underlying the remainder of the paper. I begin by describing ordinal survey responses as measurements of an underlying latent attitude using the classical threshold-crossing model. I then revisit a well-known identification result showing that latent treatment effects are identified only up to location and scale, and discuss its implications for causal inference with ordinal outcomes. Finally, I introduce distributional causal estimands that are directly identified from observed ordinal responses and motivate the estimation framework developed in the next section.
 
@@ -198,184 +198,113 @@ This distinction has immediate implications for empirical practice. Different an
 \subsection{Distributional Causal Estimands}
 \label{subsec:estimands}
 
-The fundamental object is the distribution of potential outcomes. Let
+The identification result in Theorem~1 does not imply that causal inference with ordinal outcomes is fundamentally limited. Rather, it suggests that inference should focus on causal quantities defined directly on the observed ordinal responses. Such quantities require no assumptions about the cardinal spacing of the latent attitude and therefore remain invariant to admissible transformations of the latent scale. This perspective is closely aligned with recommendations to report predicted probabilities rather than latent coefficients when interpreting ordinal response models \citep{Hanmer2013a}. Here I formalize these quantities as causal estimands and show that they are identified under the standard assumptions of causal inference.
+
+The fundamental object is the distribution of potential ordinal outcomes. Let
 
 \[
-\pi_j(d) = P\left(Y_i(d)=j\right)
-\qquad
-j=0,\ldots,J
+\pi_j(d) = P\left( Y_i(d)=j \right),
+\qquad j=0,\ldots,J,
 \]
 
-denote the probability that a randomly selected individual reports category $j$ under treatment level $d$. 
+denote the probability that a randomly selected individual reports category $j$ under treatment level $d$.
 
-Under the standard assumptions of SUTVA, conditional ignorability, and positivity introduced in the previous subsection, these probabilities are identified from the observed data through standardization:
+Under the standard assumptions of SUTVA, conditional ignorability, and positivity, these probabilities are identified by standardization,
 
 \[
-\pi_j(d) = \mathbb{E}_X \left[ P\left(Y_i=j \mid D_i=d,X_i \right) \right]
+\pi_j(d) = \mathbb{E}_X\left[P\left( Y_i=j \mid D_i=d,X_i \right)\right],
 \]
 
-where the expectation is taken with respect to the covariate distribution in the target population. In randomized experiments, where treatment assignment is independent of the covariates by design, this expression simplifies to the observed proportion of respondents in category $j$ within each treatment arm. Consequently, the primary statistical task is to estimate the conditional response probabilities
+where the expectation is taken over the covariate distribution of the target population. In randomized experiments, this expression simplifies to the observed proportion of respondents falling into category $j$ within each treatment arm.
+
+\begin{proposition}
+Under SUTVA, conditional ignorability, and positivity, the distribution of potential ordinal outcomes is identified by standardization. Consequently, any causal quantity that is a functional of this distribution is also identified.
+\end{proposition}
+
+This proposition has an important practical implication. Once the conditional ordinal response distribution has been estimated, a wide range of causal quantities become available without fitting additional models. The primary statistical task is therefore estimation of the conditional response probabilities,
+
 \[
 P(Y_i=j\mid D_i,X_i),
 \]
+
 which serve as the building blocks for all distributional causal estimands considered in this paper.
 
-The corresponding category-specific treatment effect is
+The simplest causal quantity is the category-specific treatment effect,
 
 \[
-\Delta_j = \pi_j(1)-\pi_j(0).
+\Delta_j = \pi_j(1)-\pi_j(0),
 \]
 
-These effects describe how an intervention redistributes respondents across the observed response categories. For example, in a survey experiment on support for military intervention, $\Delta_{\text{Strongly Agree}}$ measures how treatment changes the proportion of respondents expressing the strongest level of support.
+which measures how treatment changes the probability that a respondent selects category $j$. For example, in a survey experiment on support for military intervention, $\Delta_{\text{Strongly Agree}}$ measures the change in the proportion of respondents expressing the strongest level of support.
 
-In many political science applications, researchers are interested in whether respondents exceed a substantively meaningful threshold rather than in a single response category. This motivates cumulative treatment effects,
+In many political science applications, however, interest centers on whether respondents exceed a substantively meaningful threshold rather than on a single response category. This motivates cumulative treatment effects,
 
 \[
-\Delta_{\ge j} = P\left(Y_i(1)\ge j\right) - P\left(Y_i(0)\ge j\right),
+\Delta_{\ge j} = P\left( Y_i(1)\ge j \right) = P\left( Y_i(0)\ge j \right),
 \]
 
-which quantify changes in the probability of responding at or above category $j$. For example, a researcher may wish to estimate whether an informational treatment increases the probability that respondents express at least moderate support for a policy. Unlike dichotomizing the outcome before estimation, cumulative treatment effects can be computed for every threshold after estimating the ordinal response distribution, allowing the data to retain information from all response categories.
+which quantify changes in the probability of responding at or above category $j$. For example, a researcher may wish to estimate whether an informational treatment increases the probability that respondents express at least moderate support for a policy. Unlike dichotomizing the outcome before estimation, cumulative treatment effects can be calculated for every threshold after estimating the ordinal response distribution, allowing the full information contained in the ordinal responses to be retained.
 
-Distributional causal effects also distinguish between substantively different treatment mechanisms that may appear similar under conventional analyses. Two treatments may produce identical changes in the average of numerically coded responses while affecting entirely different parts of the response distribution. One treatment may primarily move respondents from strong opposition to neutrality, whereas another may convert moderate supporters into strong supporters. Although these interventions have different political implications, they may be indistinguishable once ordinal responses are reduced to a single coded mean. Distributional estimands preserve these distinctions by describing how treatment changes the entire response distribution rather than a single numerical summary.
-
-This perspective also clarifies the relationship between the proposed estimands and existing empirical practice. Assigning numerical scores to ordinal categories and estimating mean differences targets
+These estimands also clarify the relationship between the proposed framework and existing empirical practice. Assigning numerical scores to ordinal categories estimates
 
 \[
-\mathbb{E} \left[s(Y_i(1))-s(Y_i(0))\right],
+\mathbb{E} = \left[ s(Y_i(1))-s(Y_i(0)) \right],
 \]
 
-where $s(\cdot)$ denotes the chosen scoring rule. The resulting estimand is well defined for a given coding rule but generally does not identify a treatment effect on the underlying latent attitude. Similarly, dichotomizing an ordinal outcome estimates a cumulative treatment effect for a single threshold while discarding information contained in the remaining response categories. By contrast, estimating the full ordinal response distribution makes both category-specific and cumulative treatment effects available simultaneously without requiring researchers to commit to a particular numerical coding or threshold before estimation.
+where $s(\cdot)$ denotes the chosen scoring rule. This quantity is well defined for a fixed coding rule but generally does not identify a treatment effect on the underlying latent attitude. Similarly, dichotomizing an ordinal outcome estimates one cumulative treatment effect corresponding to a single threshold while discarding information about the remaining response categories. Estimating the full ordinal response distribution instead makes both category-specific and cumulative treatment effects available simultaneously, allowing researchers to select the quantity most appropriate for their substantive question after estimation rather than before it.
 
-The remainder of the paper therefore focuses on estimating the conditional distribution of ordinal responses. Once this distribution is recovered, category-specific effects, cumulative treatment effects, and other substantively meaningful summaries can all be obtained as post-estimation quantities.
+The discussion above highlights an important feature of distributional causal inference. Rather than targeting a single summary measure, the primary object of interest is the conditional distribution of ordinal responses,
+\[
+P(Y_i=j\mid D_i,X_i),
+\]
+from which a wide range of causal quantities can be obtained. Category-specific treatment effects and cumulative treatment effects are the primary estimands considered in this paper because they are directly interpretable and commonly reported in applied political science. More generally, however, any functional of the estimated response distributions may be calculated after estimation, including global measures of distributional change such as the one-dimensional Wasserstein (earth mover's) distance. Consequently, the statistical problem addressed in the remainder of this paper is estimation of the conditional ordinal response distribution rather than any single causal summary.
 
-
-\section{Estimation}
+\section{Flexible Estimation of Ordinal Response Distributions}
 \label{sec:estimation}
 
-The previous section showed that, with ordinal outcomes, treatment effects on the latent outcome $Y_i^\ast$ are identified only up to scale. Any estimator must therefore make an explicit choice of normalization, and any comparison across estimators or samples must respect that choice. This section develops and compares several estimators for the latent treatment effects $\tau$.
+Section~\ref{sec:causalordinal} established that the identified causal quantities of interest are functionals of the conditional ordinal response distribution,
+\[
+P(Y_i=j\mid D_i,X_i),
+\]
+including category-specific and cumulative treatment effects. The remaining statistical problem is therefore estimation of this conditional distribution. This section first reviews the assumptions underlying existing estimation approaches and then develops a flexible likelihood-based framework that relaxes these assumptions while retaining the interpretability and probabilistic structure of classical ordered response models.
 
-We begin by discussing standard parametric ordinal regression models, which are widely used but rely on strong assumptions about the distribution of the latent error term. We then introduce two alternative estimators that relax these assumptions by estimating the error distribution from the data: a semiparametric kernel density estimation (KDE)–based estimator and a normalizing-flow-based estimator. % Throughout, we adopt the error-variance normalization $\mathrm{Var}(\varepsilon_i)=1$ so that all coefficients are expressed on a common latent scale.
+\subsection{Existing Estimation Approaches}
+\label{subsec:existing}
 
-\subsection{Parametric Baseline Models and Their Limitations}
+The dominant approach to estimating ordinal response distributions in political science is the ordered response model, most commonly ordered logit or ordered probit. These models combine a latent-index representation with a threshold-crossing measurement model. Specifically, the latent outcome is assumed to satisfy
 
-\subsubsection{Ordered Logit, Ordered Probit, and IRT Models}
+\[
+Y_i^\ast = h(X_i,\beta) + D_i^\top\tau + \varepsilon_i,
+\]
 
-The most common models for ordinal outcomes in political science are ordered logit and ordered probit. Both are based on the latent outcome representation, introduced in Section~\ref{subsec:setup}. These two models rely on strong parametric assumptions on the CDF of the latent error term $F$ to estimate. Ordered probit assumes that the error term follows a standard normal distribution, while ordered logit assumes a standard logistic distribution.
+where $h(X_i,\beta)$ is a systematic component of the latent outcome, $\tau$ denotes the treatment effect, and the observed ordinal response is generated through the threshold-crossing mechanism introduced in Section~\ref{subsec:setup}. The distinction between ordered logit and ordered probit lies in the assumed distribution of the latent error term, with the former assuming a standard logistic distribution and the latter assuming a standard normal distribution.
 
-Under either specification, the probability of observing category $j$ conditional on $(X_i,D_i)$ is
-$$
-\mathbb{P}(Y_i = j \mid X_i,D_i)
-= F\bigl( \alpha_j - f(X_i,\beta) - D_i^\top\tau \bigr) - F\bigl( \alpha_{j-1} - f(X_i,\beta) - D_i^\top\tau \bigr) 
-$$, where $F$ is the assumed CDF (normal for ordered probit, logistic for ordered logit). The log-likelihood for a sample of size $n$ is 
-$$ 
-\ell(\alpha,\beta,\tau) = \sum_{i=1}^n \sum_{j=0}^J 1_{{Y_i=j}} \log\left[ F\bigl( \alpha_j - f(X_i,\beta) - D_i^\top\tau \bigr)
-F\bigl( \alpha_{j-1} - f(X_i,\beta) - D_i^\top\tau \bigr) \right], 
-$$ 
-and maximum likelihood estimation yields $\hat{\alpha}$, $\hat{\beta}$, and $\hat{\tau}$.
-% These models estimate $\tau$ up to the scale implied by the error distribution. In ordered probit, $\mathrm{Var}(\varepsilon_i)=1$ is imposed by construction, aligning with our error-variance normalization. In ordered logit, the latent scale differs by the factor $\sqrt{\mathrm{Var}(\varepsilon_i)} = \pi/\sqrt{3}$.
+These models remain the workhorses of applied political science for good reason. They naturally respect the ordinal nature of survey responses, provide interpretable latent-variable representations, admit likelihood-based inference, and often perform well when their assumptions are approximately satisfied. Moreover, predicted probabilities and first differences derived from ordered response models have become the preferred quantities for interpreting ordinal treatment effects in political methodology \citep{Hanmer2013a}.
 
-If multiple items measure the same latent construct, item response theory (IRT) models provide an alternative framework. Standard IRT models treat each respondent as having a latent trait $\theta_i$ and each item $k$ as having discrimination and difficulty parameters. Ordered responses are modeled using item-specific thresholds and an assumed error distribution, typically normal or logistic. Treatment effects can then be estimated either in a second stage, by regressing estimated $\theta_i$ on $D_i$ and $X_i$, or jointly in hierarchical IRT models that combine measurement and causal components \citep{Zhou2019a, Stoetzer2025a}.
+The validity of these probability estimates, however, depends on the assumptions used to construct the underlying response distribution. First, ordered response models assume a fixed parametric distribution for the latent error term. Second, they typically impose a single-index structure in which all covariate effects operate through the same latent index. Together, these assumptions imply a particular shape for the conditional ordinal response distribution.
 
-% Like ordered logit and probit, most IRT specifications rely on strong assumptions about the error distribution (mostly it is assumed to be normal or logistic). When these assumptions are violated, estimators converge to pseudo-true parameters that may differ substantially from the actual latent treatment effects.
+In many survey experiments these assumptions may be difficult to justify. Political attitudes are frequently polarized or clustered, producing multimodal latent distributions. Ceiling and floor effects can compress observed responses near the boundaries of Likert scales. Persuasive treatments often affect moderate respondents differently from strong supporters, generating nonlinear treatment-response relationships. Although ordered response models may continue to provide useful approximations in many applications, misspecification of the latent error distribution or index structure can distort the estimated category probabilities and cumulative treatment effects that constitute the primary quantities of substantive interest.
 
-\subsubsection{Consequences of Distributional Misspecification}
+A number of extensions have been proposed to relax these assumptions. Generalized ordered response models allow covariate effects to vary across response thresholds, while semiparametric estimators relax parametric assumptions on the latent error distribution. Bayesian nonparametric approaches provide additional flexibility through hierarchical modeling. Existing approaches, however, typically relax only one component of the model or become computationally difficult in the presence of high-dimensional covariates. The next subsection introduces a unified likelihood-based framework that accommodates both structured latent-index models and fully nonparametric conditional response distributions within a common estimation procedure.
 
-When the true conditional error distribution $F$ matches the assumed form and the latent outcome is correctly specified, MLE guarantees all parametric models discussed above to yield consistent and asymptotically efficient estimators of $(\alpha,\beta,\tau)$ (up to scale). However, if the true $F$ differs from the assumed distribution, the estimators generally converge to pseudo-true values that solve the misspecified likelihood equations rather than the true parameters \citep{Manski1988a, Greene2010a}. The resulting bias can be substantial and may even change the sign of estimated effects in finite samples.
+\subsection{Why Conditional Normalizing Flows?}
+\label{subsec:why_nf}
 
-In applied settings, there are many reasons to doubt the normal or logistic error assumptions. The latent error term may be skewed, heavy-tailed, or multimodal. Unobserved heterogeneity, including unobserved confounders, may enter the latent outcome and induce heteroskedastic or non-normal residual variation. When the error distribution is misspecified, ordered logit/probit and many IRT models are no longer reliable for causal inference on the latent scale.
+The previous subsection showed that estimation of the conditional ordinal response distribution is the central statistical problem underlying causal inference with ordinal outcomes. The question, therefore, is not simply how to relax the parametric assumptions of ordered logit and ordered probit, but how to do so while retaining the probabilistic structure that makes these models attractive. An ideal estimator should remain likelihood-based, accommodate high-dimensional covariates, recover the full conditional response distribution, and allow researchers to incorporate as much or as little structural modeling as their application warrants.
 
-These concerns motivate estimators that treat the latent outcome structure as parametric but estimate the error distribution $F$ flexibly from the data, avoiding strong distributional assumptions while retaining the interpretability of latent treatment effects.
+Existing semiparametric approaches relax some of the assumptions imposed by classical ordered response models, most commonly the distribution of the latent error term. Kernel-based estimators and related semiparametric methods provide important robustness gains, but they typically become computationally demanding as the dimension of the conditioning variables increases. Modern survey experiments routinely adjust for rich collections of demographic characteristics, pretreatment covariates, and treatment interactions, making high-dimensional conditional density estimation an increasingly important practical concern.
 
-\subsection{A Semiparametric KDE-Based Estimator}
+Conditional normalizing flows provide a natural framework for addressing these challenges. A normalizing flow represents an unknown probability distribution through a sequence of invertible transformations of a simple base distribution. Unlike discriminative machine-learning methods that directly predict response probabilities, normalizing flows estimate the underlying conditional density through maximum likelihood. Consequently, the estimated model remains fully probabilistic: likelihood-based estimation, model comparison, and probabilistic calibration are all retained within a flexible distributional framework.
 
-Instead of assuming $F$, we can estimate $F$ semiparametrically using kernel density estimation (KDE), following and extending ideas in \citet{Klein2002a}. The key idea is to construct a quasi-likelihood for $(\alpha,\beta,\tau)$ by plugging a KDE-based estimate $\hat{F}$ into the ordinal likelihood expression and maximizing with respect to the parameters.
+A second advantage is that the same framework accommodates different levels of structural modeling. At one extreme, the latent outcome may follow the familiar single-index specification used in classical ordered response models, with the normalizing flow used only to estimate a flexible latent error distribution. At the other extreme, the systematic component of the latent outcome may itself be modeled nonparametrically, allowing the entire conditional response distribution to be learned with minimal functional-form restrictions. Rather than forcing researchers to choose between a fully parametric model and a fully nonparametric estimator, the proposed framework provides a continuum of models that differ only in the amount of structure imposed on the conditional response distribution.
 
-This approach treats $f(X_i,\beta) + D_i^\top\tau$ as a low-dimensional parametric component and $F$ as an infinite-dimensional nuisance parameter estimated nonparametrically. Under appropriate smoothness and regularity conditions, the resulting quasi-maximum likelihood estimator is consistent for $(\alpha,\beta,\tau)$ up to scale.
+Finally, because the proposed estimator targets the conditional response distribution itself, the resulting model is not tied to any particular causal summary. Once the distribution has been estimated, category-specific treatment effects, cumulative treatment effects, and other functionals of the ordinal response distribution can all be obtained as post-estimation quantities without fitting additional models. In this sense, the conditional ordinal response distribution serves as the fundamental statistical object, while the causal quantities discussed in Section~\ref{subsec:estimands} arise as different summaries of that common object.
 
-Formally, the KDE-based quasi-log-likelihood takes the form
-
-$$
-\hat{\ell}(\alpha,\beta,\tau)
-= \sum_{i=1}^n \sum_{j=0}^J 1_{{Y_i=j}}
-\log\left[
-\hat{F}\bigl( \alpha_j - f(X_i,\beta) + D_i^\top\tau \bigr)
-- \hat{F}\bigl( \alpha_{j-1} - f(X_i,\beta) + D_i^\top\tau \bigr)
-\right],
-$$
-possibly multiplied by a trimming function that down-weights extreme observations where KDE may be unstable. The KDE-based estimator $(\hat{\alpha},\hat{\beta},\hat{\tau})$ is defined as the maximizer of $\hat{\ell}(\alpha,\beta,\tau)$. 
-
-The construction of $\hat{F}$ involves standard choices of kernel, bandwidth, and (if desired) local smoothing and trimming parameters. Following \citet{Klein2002a}, we require that the conditional density of the index $V_i$ be smooth and strictly positive over its support, and that bandwidths shrink at appropriate rates. The full procedure and regularity conditions are provided in the Appendix.
-
-Under mild regularity conditions, the KDE estimator $\hat{F}$ converges uniformly to the true $F$, and the resulting quasi-log-likelihood $\hat{\ell}(\alpha,\beta,\tau)$ converges uniformly to the infeasible log-likelihood $\ell(\alpha,\beta,\tau;F)$. Standard arguments for M-estimators then imply that the maximizer $(\hat{\alpha},\hat{\beta},\hat{\tau})$ is consistent for $(\alpha,\beta,\tau)$ up to a positive scale factor. Under additional smoothness and moment conditions, the estimator is asymptotically normal with a variance that reflects both sampling noise and the first-stage nonparametric estimation error.
-
-Intuitively, by letting the data determine the shape of $F$ rather than imposing a normal or logistic form, the KDE-based estimator avoids the bias that arises when ordered logit or probit are misspecified. In large samples, it recovers the same latent treatment effects (up to scale) that would be obtained if $F$ were known.
-
-\subsection{A Normalizing-Flow-Based Estimator}
-
-\subsubsection{Normalizing Flows: Basic Idea}
-
-Normalizing flows are a flexible class of models for probability distributions that represent a complex density as the image of a simple base density under a sequence of invertible, differentiable transformations \citep{Chen2000a}. Let $Z$ be a random variable with a simple base distribution (such as standard normal), and let $T_\theta$ be an invertible transformation parameterized by $\theta$. Define
-$$
-h = T_\theta(Z).
-$$
-The density of $h$ is then given by the change-of-variables formula:
-$$
-f_\theta(h)
-= f_Z\bigl(T_\theta^{-1}(h)\bigr)
-\left|\det \left(  \frac{\partial T_\theta^{-1}(h)}{\partial h} \right) \right|,
-$$
-where $f_Z$ is the base density and $\delta T_\theta^{-1}$ is the Jacobian of the inverse transformation. The corresponding CDF $F_\theta$ can be obtained by integrating $f_\theta$. By choosing a sufficiently rich family for $T_\theta$, normalizing flows can approximate a wide range of error distributions while preserving tractable likelihoods and gradients.
-
-Again, instead of assuming a specific $F$, we model the error term as
-$$
-\varepsilon_i = T_\theta(Z_i),
-\qquad
-Z_i \sim \mathcal{N}(0,1),
-$$
-where $T_\theta$ is a normalizing flow. The induced error distribution has density $f_\theta$ and CDF $F_\theta$.
-
-Given parameters $(\alpha,\beta,\tau,\theta)$, the probability of observing category $j$ is
-$$
-\mathbb{P}(Y_i = j \mid X_i,D_i;\alpha,\beta,\tau,\theta)
-= F_\theta\bigl( \alpha_j - f(X_i,\beta) + D_i^\top\tau \bigr) - F_\theta\bigl( \alpha_{j-1} - f(X_i,\beta) + D_i^\top\tau  \bigr). 
-$$ The log-likelihood for the sample is defined analogously
-$$ 
-\ell(\alpha,\beta,\tau,\theta) = \sum_{i=1}^n \sum_{j=0}^J 1_{{Y_i=j}} \log\left[ F_\theta\bigl( \alpha_j - f(X_i,\beta) + D_i^\top\tau \bigr) - F_\theta\bigl( \alpha_{j-1} - f(X_i,\beta) + D_i^\top\tau \bigr) \right]. 
-$$ We estimate $(\alpha,\beta,\tau,\theta)$ jointly by maximizing this likelihood using gradient-based optimization. Because $T_\theta$ is invertible and differentiable, both $f_\theta$ and $F_\theta$ are tractable, and the gradients of the log-likelihood with respect to all parameters can be computed efficiently.
-
-In practice, one must choose a specific flow architecture and hyperparameters. For example, since the error term is usually one-dimensional, we may use a rational quadratic spline flow, which represents $T_\theta$ as a piecewise rational quadratic function with monotone constraints, or a coupling-based flow with affine or spline transformations. The base distribution $Z$ is typically standard normal. The parameters $\theta$ are trained jointly with $(\alpha,\beta,\tau)$ by maximizing the ordinal log-likelihood, using stochastic gradient descent or related algorithms. In the simulations and application, we use relatively simple flows that balance flexibility with computational tractability.
-
-% To avoid overfitting and ensure numerical stability, we may impose regularization on $\theta$, limit the depth or complexity of the flow, and monitor convergence of the likelihood. 
-
-% \subsubsection{Normalization and Interpretation}
-%
-% As with the KDE-based estimator, we impose the error-variance normalization by computing the implied variance of $\varepsilon_i$ under the learned flow. Given $(\hat{\theta})$, we can approximate
-% $$
-% \hat{\sigma}\varepsilon^2
-% = \mathrm{Var}{\hat{F}\theta}(\varepsilon_i)
-% \approx \frac{1}{M} \sum{m=1}^M \bigl( T_{\hat{\theta}}(Z_m) \bigr)^2,
-% $$
-% where $Z_m$ are independent draws from the base distribution (e.g.\ standard normal). We then rescale all slope coefficients:
-% $$
-% \hat{\tau}^{\text{unit-var}} = \frac{\hat{\tau}}{\hat{\sigma}\varepsilon},
-% \qquad
-% \hat{\beta}^{\text{unit-var}} = \frac{\hat{\beta}}{\hat{\sigma}\varepsilon}.
-% $$
-% After this transformation, the coefficients are comparable to those from ordered probit, ordered logit (after rescaling), and the KDE-based estimator, and can be interpreted as effects on the latent outcome in units of the latent error's standard deviation.
-
-\subsection{Practical Considerations and Comparison}
-
-% The three families of estimators considered here represent different trade-offs between structure and flexibility.
-
-Ordered logit and ordered probit are simple, fast, and familiar. When their distributional assumptions are believable, they yield efficient and unbiased estimates. However, when the true error distribution deviates from logistic or normal, or when unobserved heterogeneity induces non-normal residual variation, these models can be seriously biased \citep{Manski1988a, Greene2010a, Johnston2020a, Smits2020a}.
-
-The KDE-based estimator retains a parametric structure for the latent outcome but estimates the error distribution nonparametrically. It avoids imposing a specific functional form for $F$ and is consistent under mild smoothness and support conditions, at the cost of additional tuning (choice of kernel and bandwidth) and potentially higher variance in small samples. It is most attractive in moderate to large samples where the KDE of the error distribution can be estimated reliably.
-
-The normalizing-flow-based estimator also relaxes the parametric error assumption, but does so within a fully parametric likelihood framework. By representing the error distribution via an invertible transformation of a simple base distribution, it can flexibly approximate complex shapes while preserving tractable likelihood evaluation and gradient computation. This approach can deliver both robustness to misspecification and efficiency, especially in settings with sufficient sample size and computational resources.
-
-In all cases, error-variance normalization is essential for comparability. By expressing all coefficients in units of the latent error's standard deviation, we ensure that treatment effects from ordered probit, ordered logit (after rescaling), the KDE-based estimator, and the normalizing-flow-based estimator are on the same latent scale. The next section uses Monte Carlo simulations to compare these estimators under a variety of latent error distributions and sample sizes.
+The remainder of this section develops the proposed estimator. I first introduce the latent-index representation used throughout the paper and then describe how conditional normalizing flows are incorporated into a unified likelihood-based estimation framework.
 
 
+
+\clearpage
 \section{Monte Carlo Simulation}
 \label{sec:simulation}
 % {\color{blue}
