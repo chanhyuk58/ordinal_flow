@@ -530,6 +530,7 @@ def run_one_setting(args: argparse.Namespace, setting: str) -> None:
 
     df_pop = pd.read_csv(pop_csv)
     df_idx = pd.read_csv(idx_csv)
+    meta = load_metadata(meta_json)
     truth = truth_from_metadata(meta)
 
     J = int(args.J if args.J is not None else truth["J"])
