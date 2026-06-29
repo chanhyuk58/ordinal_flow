@@ -12,10 +12,14 @@ RUN pip install --no-cache-dir \
     pandas \
     scipy \
     statsmodels \
+    matplotlib \
     nflows
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV OMP_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
+ENV OPENBLAS_NUM_THREADS=1
 
-# Set the default command (can be easily overridden)
-CMD ["python", "run_mc_unified.py"]
+# Set the default command
+CMD ["python", "run_mc.py"]
