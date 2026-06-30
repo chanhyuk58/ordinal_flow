@@ -461,12 +461,17 @@ def train_ordered_flow(X, y, Z=None, flow_bins=16, bounds=10.0, epochs=200, lr=1
 
     model = OrderedFlowModel(p=X.shape[1], J=J, q=q, flow_bins=flow_bins, bounds=bounds).to(device)
 
+    # Warm start: optimize only beta/thresholds first
+    for p in model.flow.parameters():
+        p.requires_grad = False
+
     baseline_nll = None
     baseline_state = None
     if init_probit:
         try:
             model.init_from_ordered_probit(X.cpu(), y.cpu(), Z.cpu() if Z is not None else None, verbose)
-            baseline_nll = float(model._probit_nll)
+            initial_nll = float(model._probit_nll)
+            baseline_nll = initial_nll
             baseline_state = {k: v.clone() for k, v in model.state_dict().items()}
         except Exception:
             pass
@@ -475,6 +480,14 @@ def train_ordered_flow(X, y, Z=None, flow_bins=16, bounds=10.0, epochs=200, lr=1
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
     adam_opt = optim.Adam(trainable_params, lr=lr)
     for ep in range(1, epochs + 1):
+        if ep == 21:
+            for p in model.flow.parameters():
+                p.requires_grad = True
+        
+            adam_opt = optim.Adam(
+                filter(lambda p: p.requires_grad, model.parameters()),
+                lr=lr
+            )
         adam_opt.zero_grad()
         loss = model.neg_loglik(X, y, Z)
         if torch.isnan(loss): break
@@ -482,6 +495,14 @@ def train_ordered_flow(X, y, Z=None, flow_bins=16, bounds=10.0, epochs=200, lr=1
         # Safe gradient clipping inside Adam phase
         nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         adam_opt.step()
+        cur_nll = float(loss.detach())
+
+        if baseline_nll is None or cur_nll < baseline_nll - 1e-6:
+            baseline_nll = cur_nll
+            baseline_state = {
+                k: v.detach().clone()
+                for k, v in model.state_dict().items()
+            }
 
     # L-BFGS Polish
     if use_lbfgs:
@@ -504,7 +525,7 @@ def train_ordered_flow(X, y, Z=None, flow_bins=16, bounds=10.0, epochs=200, lr=1
             try:
                 loss = lbfgs_opt.step(closure)
                 cur_nll = float(loss.detach())
-                if baseline_nll is None or cur_nll < baseline_nll:
+                if baseline_nll is None or cur_nll < baseline_nll - 1e-6:
                     baseline_nll = cur_nll
                     baseline_state = {k: v.clone() for k, v in model.state_dict().items()}
                 if torch.isnan(loss): break
@@ -516,7 +537,7 @@ def train_ordered_flow(X, y, Z=None, flow_bins=16, bounds=10.0, epochs=200, lr=1
     return model
 
 
-def train_model_free_flow(X, y, D, flow_bins=12, bounds=10.0, epochs=200, lr=1e-3, use_lbfgs=True, lbfgs_steps=30, init_probit=True, verbose=False):
+def train_model_free_flow(X, y, D, flow_bins=12, bounds=10.0, epochs=1000, lr=1e-2, use_lbfgs=True, lbfgs_steps=30, init_probit=True, verbose=False):
     X = X.to(device)
     y = y.to(device)
     D = D.to(device)
@@ -524,6 +545,13 @@ def train_model_free_flow(X, y, D, flow_bins=12, bounds=10.0, epochs=200, lr=1e-
     p = X.shape[1]
 
     model = ModelFreeConditionalFlowModel(p=p, J=J, flow_bins=flow_bins, bounds=bounds).to(device)
+
+    baseline_nll = None
+    baseline_state = None
+
+    # Warm start: optimize only beta/thresholds first
+    for p in model.flow.parameters():
+        p.requires_grad = False
 
     # Static Thresholds Probit Initialization
     if init_probit:
@@ -547,19 +575,43 @@ def train_model_free_flow(X, y, D, flow_bins=12, bounds=10.0, epochs=200, lr=1e-
             if verbose:
                 print("CNF Probit threshold initialization skipped:", e)
 
-    opt_adam = optim.Adam(model.parameters(), lr=lr)
+    opt_adam = optim.Adam(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=lr
+    )
     for ep in range(1, epochs + 1):
+        if ep == 21:
+            for p in model.flow.parameters():
+                p.requires_grad = True
+        
+            opt_adam = optim.Adam(
+                filter(lambda p: p.requires_grad, model.parameters()),
+                lr=lr
+            )
         opt_adam.zero_grad()
         loss = model.neg_loglik(X, y, D)
         if torch.isnan(loss): break
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         opt_adam.step()
+        cur_nll = float(loss.detach())
+
+        if baseline_nll is None or cur_nll < baseline_nll - 1e-6:
+            baseline_nll = cur_nll
+            baseline_state = {
+                k: v.detach().clone()
+                for k, v in model.state_dict().items()
+            }
 
     if use_lbfgs:
         opt_lbfgs = optim.LBFGS(
-            model.parameters(), lr=1.0, max_iter=20, history_size=20, line_search_fn='strong_wolfe'
+            list(filter(lambda p: p.requires_grad, model.parameters())),
+            lr=1.0,
+            max_iter=20,
+            history_size=20,
+            line_search_fn="strong_wolfe",
         )
+
         def closure():
             opt_lbfgs.zero_grad()
             loss = model.neg_loglik(X, y, D)
@@ -570,9 +622,27 @@ def train_model_free_flow(X, y, D, flow_bins=12, bounds=10.0, epochs=200, lr=1e-
         for i in range(1, lbfgs_steps + 1):
             try:
                 loss = opt_lbfgs.step(closure)
+                cur_nll = float(loss.detach())
+
+                if baseline_nll is None or cur_nll < baseline_nll - 1e-6:
+                    baseline_nll = cur_nll
+                    baseline_state = {
+                        k: v.detach().clone()
+                        for k, v in model.state_dict().items()
+                    }
                 if torch.isnan(loss): break
             except Exception:
                 break
+    if baseline_state is not None:
+        model.load_state_dict(baseline_state)
+
+    if verbose:
+        print(
+            f"[Model-free] "
+            f"Initial={initial_nll:.3f}  "
+            f"Final={baseline_nll:.3f}  "
+            f"ΔLL={initial_nll-baseline_nll:.3f}"
+        )
     return model
 
 

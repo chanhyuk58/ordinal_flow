@@ -142,13 +142,14 @@ def systematic_component(X: np.ndarray, d: int, cfg: DGPConfig) -> np.ndarray:
 
     if cfg.h_type == "nonlinear_moderates":
         eta0 = (
-            0.55 * Xd[:, 1]
-            + 0.55 * Xd[:, 2]
-            - 0.35 * Xd[:, 3]
-            + 0.25 * np.sin(Xd[:, 4])
+            1.2*np.sin(2*np.pi*Xd[:,1])
+            +0.8*Xd[:,2]**2
+            -0.8*Xd[:,3]*Xd[:,4]
         )
         moderate_weight = np.exp(-0.5 * (eta0 / 0.85) ** 2)
-        tau_i = 1.10 * moderate_weight - 0.10 * (np.abs(eta0) > 1.25)
+        tau_i = (
+            1.5*np.exp(-(eta0**2)/0.6)
+        )
         return eta0 + float(d) * tau_i
 
     if cfg.h_type == "high_dimensional":
@@ -170,10 +171,22 @@ def standardized_lognormal(z: np.ndarray, sigma: float = 1.15) -> np.ndarray:
 
 
 def standardized_mixture(rng: np.random.Generator, n: int) -> np.ndarray:
-    mu, sd = 1.65, 0.45
-    comp = rng.binomial(1, 0.5, size=n)
-    raw = np.where(comp == 1, rng.normal(mu, sd, n), rng.normal(-mu, sd, n))
-    return raw / np.sqrt(mu**2 + sd**2)
+    mu, sd = 2.6, 0.25
+
+    u = rng.uniform(size=n)
+    
+    raw = np.empty(n)
+    
+    left  = u < 0.45
+    mid   = (u >= 0.45) & (u < 0.55)
+    right = u >= 0.55
+    
+    raw[left]  = rng.normal(-mu, sd, left.sum())
+    raw[mid]   = rng.normal(0.0, 0.15, mid.sum())
+    raw[right] = rng.normal(mu, sd, right.sum())
+    
+    raw = (raw - raw.mean()) / raw.std()
+    return raw
 
 
 def draw_potential_errors(
@@ -196,7 +209,7 @@ def draw_potential_errors(
         return eps, eps.copy(), raw
 
     if cfg.error_type == "lognormal":
-        eps = standardized_lognormal(z, sigma=1.15)
+        eps = standardized_lognormal(z, sigma=1.75)
         return eps, eps.copy(), z
 
     if cfg.error_type == "mixture":
@@ -205,10 +218,10 @@ def draw_potential_errors(
 
     if cfg.error_type == "heteroskedastic_normal":
         x2 = X[:, 2] if X.shape[1] > 2 else 0.0
-        scale0 = np.exp(0.30 * x2)
-        scale1 = np.exp(0.30 * x2 + 0.45)
-        scale0 = np.clip(scale0, 0.45, 2.25)
-        scale1 = np.clip(scale1, 0.55, 2.80)
+        scale0 = np.exp(0.8*x2)
+        scale1 = np.exp(0.8*x2 + 0.9)
+        scale0 = np.clip(scale0, 0.30, 4.0)
+        scale1 = np.clip(scale1, 0.40, 5.0)
         return scale0 * z, scale1 * z, z
 
     raise ValueError(f"Unknown error_type: {cfg.error_type}")
