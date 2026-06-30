@@ -251,9 +251,12 @@ class OrderedFlowModel(nn.Module):
             Z_flat[finite_mask] = self.flow.inverse((E_finite - self.b) / a)
 
         z = Z_flat.reshape(n, self.J + 1)
-        cdf_u = torch.empty_like(z)
-        cdf_u[z == -torch.inf] = 0.0
-        cdf_u[z == torch.inf] = 1.0
+        cdf_u = torch.full_like(z, torch.nan)
+        neg_inf = torch.isneginf(z)
+        pos_inf = torch.isposinf(z)
+        
+        cdf_u[neg_inf] = 0.0
+        cdf_u[pos_inf] = 1.0
 
         finite_z = torch.isfinite(z)
         if finite_z.any():
@@ -266,7 +269,7 @@ class OrderedFlowModel(nn.Module):
         probs = self.predict_proba(X, Z)
         y_idx = (y.long() - 1).view(-1, 1)
         p_y = probs.gather(1, y_idx).squeeze(1)
-        return -torch.sum(torch.log(p_y))
+        return -torch.mean(torch.log(p_y))
 
     @torch.no_grad()
     def init_from_ordered_probit(self, X, y, Z=None, verbose=True):
@@ -390,7 +393,7 @@ class ModelFreeConditionalFlowModel(nn.Module):
         # Vectorized context replication
         C_expanded = C.unsqueeze(1).expand(-1, self.J + 1, -1).reshape(-1, 1 + self.p)
 
-        z_flat = torch.empty_like(B_flat)
+        z_flat = torch.full_like(B_flat, torch.nan)
         z_flat[B_flat == -torch.inf] = -torch.inf
         z_flat[B_flat == torch.inf] = torch.inf
 
@@ -399,12 +402,15 @@ class ModelFreeConditionalFlowModel(nn.Module):
             B_finite = B_flat[finite_mask]
             C_finite = C_expanded[finite_mask]
             z_finite, _ = self.flow._transform.forward(B_finite, context=C_finite)
-            z_flat[finite_mask] = z_finite.squeeze(-1)
+            z_flat[finite_mask, :] = z_finite
 
         z = z_flat.reshape(n, self.J + 1)
-        cdf_u = torch.empty_like(z)
-        cdf_u[z == -torch.inf] = 0.0
-        cdf_u[z == torch.inf] = 1.0
+        cdf_u = torch.full_like(z, torch.nan)
+        neg_inf = torch.isneginf(z)
+        pos_inf = torch.isposinf(z)
+        
+        cdf_u[neg_inf] = 0.0
+        cdf_u[pos_inf] = 1.0
 
         finite_z = torch.isfinite(z)
         if finite_z.any():
@@ -417,7 +423,7 @@ class ModelFreeConditionalFlowModel(nn.Module):
         probs = self.predict_proba(X, D)
         y_idx = (y.long() - 1).view(-1, 1)
         p_y = probs.gather(1, y_idx).squeeze(1)
-        return -torch.sum(torch.log(p_y))
+        return -torch.mean(torch.log(p_y))
 
     @torch.no_grad()
     def counterfactual_probs(self, X: torch.Tensor):
