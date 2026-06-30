@@ -7,7 +7,7 @@
 
 
 % ----------------------------- Title & Author ------------------------------ %
-\title{Causal Inference with Ordinal Outcomes: Two Approaches Using Density Estimation Techniques}
+\title{Causal Inference with Ordinal Outcomes: Flexible Estimation Framework with Normalizing Flows}
 \author{Chanhyuk Park}
 \date{}
 % --------------------------------------------------------------------------- %
@@ -398,7 +398,7 @@ A particularly attractive feature of ordinal response models is that the latent 
 
 The proposed framework replaces the fixed parametric latent error distribution with a flexible conditional density estimator. Rather than assuming that the latent error follows a standard normal or logistic distribution, I estimate its conditional distribution directly from the data while retaining exact likelihood-based inference.
 
-Normalizing flows provide a natural framework for this task. Originally introduced by \citet{Rezende2015}, normalizing flows represent an unknown probability distribution through a sequence of invertible transformations of a simple base distribution. Because each transformation is invertible, probability densities remain analytically tractable through the change-of-variables formula, allowing estimation to proceed by maximum likelihood. Since their introduction, normalizing flows have become a standard approach for flexible likelihood-based density estimation \citep{Kobyzev2020, Papamakarios2021}.
+Normalizing flows provide a natural framework for this task. Originally introduced by \citet{Rezende2016a}, normalizing flows represent an unknown probability distribution through a sequence of invertible transformations of a simple base distribution. Because each transformation is invertible, probability densities remain analytically tractable through the change-of-variables formula, allowing estimation to proceed by maximum likelihood. Since their introduction, normalizing flows have become a standard approach for flexible likelihood-based density estimation \citep{Kobyzev2021a, Papamakarios2021a}.
 
 Figure~\ref{fig:nf_error} illustrates the basic idea. Let
 
@@ -427,7 +427,7 @@ f_\varepsilon(\varepsilon_i\mid D_i,X_i) = p_Z(z_i)
 \right|.
 \]
 
-Unlike kernel density estimators, the transformation is represented by a parametric function that scales naturally to high-dimensional conditioning variables. Throughout this paper I construct $T_\phi(\cdot)$ using monotonic rational-quadratic spline (RQS) transformations \citep{Durkan2019a}. RQS flows provide smooth monotone mappings while retaining closed-form evaluation of both the inverse transformation and the Jacobian \citep{Durkan2019}. Because the latent error is one-dimensional, this construction also permits exact evaluation of the implied cumulative distribution function, which is required to compute the threshold probabilities in ordered response models.
+Unlike kernel density estimators, the transformation is represented by a parametric function that scales naturally to high-dimensional conditioning variables. Throughout this paper I construct $T_\phi(\cdot)$ using monotonic rational-quadratic spline (RQS) transformations \citep{Durkan2019a}. RQS flows provide smooth monotone mappings while retaining closed-form evaluation of both the inverse transformation and the Jacobian \citep{Durkan2019a}. Because the latent error is one-dimensional, this construction also permits exact evaluation of the implied cumulative distribution function, which is required to compute the threshold probabilities in ordered response models.
 
 The conditional flow is used only to model the latent error distribution. The systematic component of the latent outcome in Equation~\eqref{eq:latent} remains independent of this choice and may therefore be specified at different levels of structural complexity. In the structured specification, the function $h(\cdot)$ is parameterized using a conventional latent-index model, so that flexibility is introduced only through the latent error distribution. This specification may be viewed as a semiparametric generalization of ordered logit and ordered probit. In the fully flexible specification, both the systematic component and the latent error distribution are modeled nonparametrically, allowing the conditional ordinal response distribution to be learned with minimal functional-form assumptions. Both specifications share the same likelihood and estimation procedure, differing only in the amount of structure imposed on the latent outcome model.
 
@@ -496,64 +496,50 @@ The simulation study and empirical applications that follow focus primarily on c
 \section{Monte Carlo Simulation}
 \label{sec:simulation}
 
-This section evaluates the finite-sample performance of the proposed estimation framework. The objective is not to demonstrate that flexible estimation universally outperforms classical ordered response models. Ordered logit and ordered probit remain efficient estimators when their assumptions are approximately satisfied. Rather, the simulations investigate the conditions under which the additional flexibility of the proposed estimator becomes important for recovering the conditional ordinal response distribution and the corresponding distributional causal effects.
-
-The simulation study considers a sequence of data-generating mechanisms designed to reflect empirical features commonly encountered in political science applications, including heavy-tailed and multimodal latent attitudes, nonlinear treatment-response relationships, and high-dimensional covariate structures. Across these settings, I compare the proposed estimator with conventional ordered response models and a fully nonparametric empirical estimator based on observed category frequencies. Performance is evaluated in terms of recovery of the conditional response distribution and the resulting causal quantities introduced in Section~\ref{subsec:estimands}.
-
+This section evaluates the finite-sample performance of the proposed estimation framework. The objective is not to demonstrate that flexible estimation universally outperforms classical ordered response models. Ordered logit and ordered probit remain statistically efficient when their assumptions are approximately satisfied. Instead, the simulations investigate the conditions under which flexible estimation of the conditional ordinal response distribution improves recovery of the distributional causal effects introduced in Section~\ref{subsec:estimands}. Throughout, causal identification is held fixed so that differences in performance arise solely from the estimation procedure.
 
 \subsection{Simulation Design}
 \label{subsec:sim_design}
 
-All simulations are generated from the latent-index representation introduced in Equation~\eqref{eq:latent}, followed by the threshold-crossing measurement model described in Section~\ref{subsec:setup}. Unless otherwise stated, treatment assignment is completely randomized, ensuring that the identification assumptions developed in Section~\ref{sec:causalordinal} hold by construction. Consequently, differences in performance arise solely from the estimation procedure rather than from failures of causal identification.
+Each simulation begins by generating a synthetic population of one million observations from the latent-index model in Equation~\eqref{eq:latent}. The latent outcome is converted into an observed ordinal response through the threshold-crossing measurement model introduced in Section~\ref{subsec:setup}, with common reporting thresholds fixed across treatment conditions. The resulting population serves as the ground truth throughout the Monte Carlo experiment. Because the population is sufficiently large, the true category-specific and cumulative treatment effects can be computed with negligible Monte Carlo error before sampling begins. Consequently, all reported estimation error reflects finite-sample performance rather than uncertainty in the reference values.
 
-The simulation design systematically varies the two components of the latent outcome model that distinguish the proposed framework from conventional ordered response models: the systematic component $h(\cdot)$ and the latent error distribution $F$. The baseline scenario follows the assumptions of ordered probit, with a linear latent index and normally distributed errors. Additional scenarios progressively relax these assumptions by introducing heavy-tailed or multimodal latent error distributions, nonlinear latent-index functions, and higher-dimensional covariate structures representative of modern survey experiments. This design allows the simulations to isolate the consequences of each modeling assumption while remaining closely connected to the motivating examples discussed in the introduction.
+Treatment assignment is completely randomized, ensuring that the identification assumptions developed in Section~\ref{sec:causalordinal} hold by construction. For each data-generating process, I draw 100 independent random samples of sizes $n\in{500,1000,2000}$ from the population. Each sampled dataset is analyzed independently, and performance measures are aggregated across Monte Carlo replications.
 
-For each data-generating process, I generate $R = 100$ Monte Carlo replications with sample size $n$. Each simulated dataset is analyzed using four estimators: ordered probit, ordered logit, an empirical estimator based on observed category frequencies, and the proposed conditional normalizing-flow estimator. The empirical estimator provides a nonparametric benchmark in randomized experiments by estimating treatment-arm response distributions directly from the observed data without imposing any model structure. Comparing these four estimators therefore illustrates the trade-off between modeling assumptions, statistical efficiency, and robustness to misspecification.
+The simulation considers six data-generating processes designed to isolate different departures from the assumptions underlying classical ordered response models. Two benchmark settings generate latent errors from the normal and logistic distributions, under which ordered probit and ordered logit are correctly specified, respectively. The remaining settings introduce skewed latent errors, polarized (multimodal) latent attitudes, heteroskedastic latent errors, and nonlinear latent response functions. Together these scenarios represent empirical features frequently encountered in survey experiments while allowing the consequences of different modeling assumptions to be examined separately.
 
-Simulation performance is evaluated from two perspectives. First, I examine how accurately each method recovers the conditional ordinal response distribution. Second, I evaluate the resulting category-specific and cumulative treatment effects obtained by regression standardization. Together, these metrics distinguish errors arising from poor distributional estimation from those arising in the post-estimation causal summaries that are ultimately reported by applied researchers.
+Five estimators are compared. The first is an empirical distribution estimator that estimates category probabilities directly from observed treatment-arm frequencies without imposing a statistical model. The second and third are ordered probit and ordered logit. The remaining estimators implement the proposed framework in two forms. The structured flow specification retains the linear latent-index model while estimating the latent error distribution flexibly. The model-free specification estimates both the systematic component and the latent error distribution nonparametrically. To facilitate stable optimization, both flow estimators are initialized using the ordered probit estimates before likelihood maximization.
 
-
-
-
+Performance is evaluated using bias, absolute bias, and root mean squared error (RMSE) for the category-specific and cumulative treatment effects introduced in Section~\ref{subsec:estimands}. These quantities are obtained by regression standardization from each fitted model. Because all estimators target the same causal estimands under identical identification assumptions, differences in performance reflect only the statistical consequences of the modeling assumptions imposed by each estimation procedure.
 
 
-
-
-
-
-
+\subsection{Simulation Results}
+\label{subsec:sim_results}
 
 \begin{figure}
-    \begin{tabular}{cc}
-        % \includegraphics[width=0.45\textwidth]{../figures/bias_norm.pdf} & \includegraphics[width=0.45\textwidth]{../figures/rmse_norm.pdf}\\
-        \includegraphics[width=0.45\textwidth]{../figures/expect_bias_oprobit_ologit_flow_normal_OLS.pdf} & \includegraphics[width=0.45\textwidth]{../figures/expect_rmse_oprobit_ologit_flow_normal_OLS.pdf}\\
-        (a) & (b)
-    \end{tabular}
-    \caption{Monte Carlo Simulation Results: Standard Normal Error}
+  \begin{center}
+  \includegraphics[width=0.95\textwidth]{../r_scripts/figure_bias.pdf}
+  \end{center}
+  \caption{}\label{fig:bias}
 \end{figure}
-
-Figure 1 summarizes the Monte Carlo simulation results for the standard normal error term case.
-Panel (a) shows the mean bias from 100 simulations of OLS, ordered logit model, ordered probit model, KDE-based estimator, and Normalizing flow based estimator. The biases of the KDE-based and NF-based estimators are comparable to the true model, the ordered probit. Panel (b) shows RMSE for each estimator, and again both KDE-based estimator and NF-based estimator perform comparable to ordered probit model. Considering that the standard normal error case meets the distributional assumption for ordered probit model, the great performance of the ordered probit model is expected. Also, the CDF of standard logistic is not too different from that of standard normal, ordered logit model also retains small bias. This demonstrates strong finite sample performance of both KDE-based and NF-based estimators.
-
-% The one notable thing is that OLS with common cardinalization of $\{1, 2, 3\}$ is significantly underestimating the $\tau$. However, OLS may also overestimate the effect if other cardinalization scheme is used. For example, OLS with $\{1, 5, 25\}$ cardinalization would blow up the coefficient and may lead to overestimation. Thus, the results from OLS models are highly dependent on the cardinalization schemes, and thus unreliable.
-% First, in terms of root mean squared error (RMSE), Panel (b) shows that KDE-based estimator demonstrates only slight larger RMSE than other parametric ordinal regression models and comparable to that of OLS. Panel (a) shows the mean bias from 1,000 simulations of two OLS, ordered logit model, ordered probit model, and KDE-based estimator. The one notable thing is that OLS with common cardinalization of $\{1, 2, 3\}$ is significantly underestimating the $\tau$. However, OLS may also overestimate the effect if other cardinalization scheme is used. For example, OLS with $\{1, 5, 25\}$ cardinalization would blow up the coefficient and may lead to overestimation. Thus, the results from OLS models are highly dependent on the cardinalization schemes, and thus unreliable.
-
-% Both ordered probit model and ordered logit model show low estimated bias, and KDE-based estimator also shows comparably small bias across all sample sizes. Considering that the standard normal error case meets the distributional assumption for ordered probit model, the great performance of the ordered probit model is expected. Also, the CDF of standard logistic is not too different from that of standard normal, ordered logit model also retains small bias. KDE-based estimator also performs comparable to ordered probit model, only having slightly large bias when sample size is small.
 
 \begin{figure}
-    \begin{tabular}{cc}
-        % \includegraphics[width=0.45\textwidth]{../figures/bias_tdis.pdf} & \includegraphics[width=0.45\textwidth]{../figures/rmse_tdis.pdf}\\
-        \includegraphics[width=0.45\textwidth]{../figures/expect_bias_oprobit_ologit_flow_lognormal_OLS.pdf} & \includegraphics[width=0.45\textwidth]{../figures/expect_rmse_oprobit_ologit_flow_lognormal_OLS.pdf}\\
-        (a) & (b)
-    \end{tabular}
-    \caption{Monte Carlo Simulation Results: Lognormal distribution Error}
+  \begin{center}
+  \includegraphics[width=0.95\textwidth]{../r_scripts/figure_rmse.pdf}
+  \end{center}
+  \caption{}\label{fig:rmse}
 \end{figure}
 
-Figure 2 describes the results from the lognormal-distribution error term case. Again OLS shows the worst results, clearly overestimating the treatment effect. Ordered probit and ordered logit resulted in very similar estimates and almost indistinguishable in the figure. However, these standard ordinal regression models also show large over estimation of NLTE, and the bias dies not shrink as the sample size increases. This clearly demonstrates that they can be inconsistent estimators if the distributional assumptions are violated. Both of the flexible ordinal estimators introduced in this paper shows much better performance in terms of bias, and as expected, the biases seem to converge to 0 as the sample size increases. One panel (b) we observe a similar story, while OLS has very RMSE, standard ordered logit and probit maintains the RMSE around 0.7 to 0.74. Both KDE-based and NF-based estimators achieves the best performance in terms of RMSE.
 
-% Again, Panel (b) reports the RMSE for the four models. OLS results show large underestimating bias. Ordered logit and ordered probit model suffer significant overestimation which is up to almost 10\% of the treatment effect. KDE estimator shows the best performance by controlling the bias at the lowest level.
+Figures~\ref{fig:bias} and~\ref{fig:rmse} summarize the finite-sample performance of the competing estimators across the six data-generating processes. Each panel corresponds to one latent response mechanism, while the horizontal axis reports the sample size. Absolute bias and root mean squared error (RMSE) are averaged across the category-specific and cumulative treatment effects introduced in Section~\ref{subsec:estimands}. Lower values indicate more accurate recovery of the target causal quantities.
 
-Overall, the Monte Carlo simulation demonstrates that cardinalization approach depends on arbitrary labels and thus unreliable to capture the causal effect, standard ordered regression models may perform poorly when the distributional assumptions are violated. KDE-based estimator and NF-base estimator, however, demonstrate better performance across two cases and different sample sizes.
+The benchmark settings provide an important validation of the proposed framework. Under normally distributed latent errors, where ordered probit is correctly specified, and under logistic latent errors, where ordered logit is correctly specified, the proposed estimators remain competitive with the classical models. In particular, the structured flow estimator exhibits little or no efficiency loss despite relaxing the parametric assumption on the latent error distribution. These benchmark scenarios therefore demonstrate that the additional modeling flexibility does not substantially compromise finite-sample performance when the conventional assumptions are approximately correct.
+
+The remaining four scenarios examine departures from the assumptions underlying classical ordered response models. As the latent error distribution becomes skewed, multimodal, or heteroskedastic, or when the systematic component becomes nonlinear, the structured flow estimator consistently achieves the lowest estimation error among the model-based approaches. The gains are particularly pronounced under polarized latent attitudes and nonlinear response functions, where restrictive parametric assumptions lead to noticeable increases in both bias and RMSE for ordered logit and ordered probit. These results indicate that modeling the latent error distribution flexibly substantially improves recovery of the conditional ordinal response distribution when classical assumptions are violated.
+
+The model-free flow estimator generally improves upon ordered logit and ordered probit under model misspecification but is typically outperformed by the structured flow specification. This pattern suggests that retaining the latent-index representation provides useful structural information while allowing flexibility in the latent error distribution. Conversely, the empirical distribution estimator exhibits the largest estimation error across nearly all settings because it estimates treatment-arm response probabilities directly from the observed sample without borrowing information across covariate values.
+
+Across all simulation settings, estimation error decreases with sample size for every estimator, as expected. More importantly, the relative ranking of the estimators remains stable. The proposed framework therefore achieves the desired balance between robustness and efficiency: it remains competitive when the assumptions of classical ordered response models hold while providing substantial gains when those assumptions are violated. 
+
 
 \section{Application 1: \citet{Tomz2020a}}
 \label{sec:application}
