@@ -461,3 +461,34 @@ class ModelFreeOrdinalFlow(BaseOrdinalFlowEstimator):
         self.model = ModelFreeConditionalFlowModel(p=X_t.shape[1], J=self.J, flow_bins=self.flow_bins, bounds=self.bounds, hidden_features=self.hidden_features).to(device)
         self.history = train_flow_model(self.model, X_t, y_t, Z=None, epochs=epochs, lr=lr, use_lbfgs=use_lbfgs, verbose=verbose)
         return self
+
+# ----------------------------------------------------------------------
+# Standard Statsmodels Baseline Fits
+# ----------------------------------------------------------------------
+
+def fit_ordered_sm_baseline(X, y, treatment_idx: int = 0, link: str = "probit"):
+    """
+    Fits a standard statsmodels OrderedModel and returns probability estimands.
+    """
+    y0 = np.asarray(y, dtype=int) - 1
+    X_np = np.asarray(X, dtype=float)
+    cols = [f"x{k}" for k in range(X_np.shape[1])]
+    dfX = pd.DataFrame(X_np, columns=cols)
+    
+    # Fit statsmodels OrderedModel
+    mod = OrderedModel(y0, dfX, distr=link)
+    res = mod.fit(method="bfgs", disp=False)
+
+    def predict_probs(X_in):
+        probs = np.asarray(res.model.predict(res.params, exog=pd.DataFrame(X_in, columns=cols)))
+        return normalize_probs(probs)
+
+    # Compute counterfactuals
+    X1, X0 = X_np.copy(), X_np.copy()
+    X1[:, treatment_idx] = 1.0
+    X0[:, treatment_idx] = 0.0
+    
+    p1, p0 = predict_probs(X1), predict_probs(X0)
+    effects = effects_from_counterfactual_probs(p1, p0)
+    
+    return effects, res
