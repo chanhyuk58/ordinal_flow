@@ -15,7 +15,6 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-
 REQUIRED_COLUMNS = {
     "setting",
     "n",
@@ -27,16 +26,12 @@ REQUIRED_COLUMNS = {
     "truth",
 }
 
-
 def find_result_files(results_dir: str, pattern: str) -> List[str]:
     files = sorted(glob.glob(os.path.join(results_dir, pattern)))
     files = [f for f in files if "failures" not in os.path.basename(f)]
     if not files:
-        raise FileNotFoundError(
-            f"No result files found in {results_dir} with pattern {pattern}"
-        )
+        raise FileNotFoundError(f"No result files found in {results_dir} with pattern {pattern}")
     return files
-
 
 def read_results(files: List[str]) -> pd.DataFrame:
     frames = []
@@ -55,7 +50,6 @@ def read_results(files: List[str]) -> pd.DataFrame:
     out["estimate"] = pd.to_numeric(out["estimate"], errors="coerce")
     out["truth"] = pd.to_numeric(out["truth"], errors="coerce")
     return out
-
 
 def aggregate(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
@@ -84,35 +78,31 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
         rmse = float(np.sqrt(np.nanmean(err ** 2))) if valid_err.any() else np.nan
         mae = float(np.nanmean(np.abs(err))) if valid_err.any() else np.nan
 
-        rows.append(
-            {
-                "setting": setting,
-                "n": int(n),
-                "model": model,
-                "metric": metric,
-                "index": int(index),
-                "truth": truth,
-                "estimate_mean": mean_est,
-                "estimate_sd": sd_est,
-                "bias": bias,
-                "abs_bias": abs(bias) if np.isfinite(bias) else np.nan,
-                "rmse": rmse,
-                "mae": mae,
-                "mcse_mean": mcse_mean,
-                "n_rep": int(g["rep"].nunique()),
-                "n_obs": int(len(g)),
-                "n_missing": int((~valid).sum()),
-                "source_files": int(g["source_file"].nunique()),
-            }
-        )
+        rows.append({
+            "setting": setting,
+            "n": int(n),
+            "model": model,
+            "metric": metric,
+            "index": int(index),
+            "truth": truth,
+            "estimate_mean": mean_est,
+            "estimate_sd": sd_est,
+            "bias": bias,
+            "abs_bias": abs(bias) if np.isfinite(bias) else np.nan,
+            "rmse": rmse,
+            "mae": mae,
+            "mcse_mean": mcse_mean,
+            "n_rep": int(g["rep"].nunique()),
+            "n_obs": int(len(g)),
+            "n_missing": int((~valid).sum()),
+            "source_files": int(g["source_file"].nunique()),
+        })
 
     return pd.DataFrame(rows)
 
-
 def aggregate_failures(results_dir: str, out_dir: str) -> None:
     files = sorted(glob.glob(os.path.join(results_dir, "mc_failures_*.csv")))
-    if not files:
-        return
+    if not files: return
 
     frames = []
     for f in files:
@@ -126,7 +116,22 @@ def aggregate_failures(results_dir: str, out_dir: str) -> None:
     if frames:
         fail = pd.concat(frames, ignore_index=True)
         fail.to_csv(os.path.join(out_dir, "mc_failures_all.csv"), index=False)
+        print(f"Aggregated {len(fail)} failure records into mc_failures_all.csv")
 
+def print_quick_summary(summary: pd.DataFrame):
+    """Prints a pivot table of RMSE and Bias for quick terminal inspection."""
+    print("\n--- QUICK SUMMARY (RMSE) ---")
+    try:
+        # Filter out latent_beta since it doesn't have a ground truth for RMSE
+        sub = summary[summary["metric"] != "latent_beta"]
+        rmse_pivot = sub.pivot_table(index=["setting", "n", "metric"], columns="model", values="rmse")
+        print(rmse_pivot.round(4).to_string())
+
+        print("\n--- QUICK SUMMARY (BIAS) ---")
+        bias_pivot = sub.pivot_table(index=["setting", "n", "metric"], columns="model", values="bias")
+        print(bias_pivot.round(4).to_string())
+    except Exception as e:
+        print(f"Could not generate pivot tables: {e}")
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Aggregate chunked Monte Carlo results.")
@@ -142,10 +147,12 @@ def main() -> None:
     print(f"Found {len(files)} result files.")
 
     raw = read_results(files)
-    raw = raw.drop_duplicates(
-        subset=["setting", "n", "rep", "model", "metric", "index"],
-        keep="last",
-    )
+    
+    # Check for duplicates before dropping to warn the user
+    original_len = len(raw)
+    raw = raw.drop_duplicates(subset=["setting", "n", "rep", "model", "metric", "index"], keep="last")
+    if len(raw) < original_len:
+        print(f"Dropped {original_len - len(raw)} overlapping replication records (kept latest).")
 
     if args.save_raw:
         raw.to_csv(os.path.join(args.out_dir, "mc_raw_all.csv"), index=False)
@@ -155,9 +162,10 @@ def main() -> None:
 
     aggregate_failures(args.results_dir, args.out_dir)
 
-    print(f"Saved summary: {os.path.join(args.out_dir, 'mc_summary.csv')}")
-    print(summary.head(20))
-
+    print(f"\nSaved summary to: {os.path.join(args.out_dir, 'mc_summary.csv')}")
+    
+    # Print the table output
+    print_quick_summary(summary)
 
 if __name__ == "__main__":
     main()
