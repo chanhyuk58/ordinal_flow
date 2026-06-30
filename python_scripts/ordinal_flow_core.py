@@ -534,6 +534,13 @@ def train_ordered_flow(X, y, Z=None, flow_bins=16, bounds=10.0, epochs=200, lr=1
 
     if baseline_state is not None:
         model.load_state_dict(baseline_state)
+    if verbose and baseline_nll is not None:
+        print(
+            f"[Structured] "
+            f"Initial={initial_nll:.3f}  "
+            f"Final={baseline_nll:.3f}  "
+            f"ΔLL={initial_nll-baseline_nll:.3f}"
+        )
     return model
 
 
