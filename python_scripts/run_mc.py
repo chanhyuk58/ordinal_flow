@@ -18,20 +18,16 @@ import numpy as np
 import pandas as pd
 import torch
 
+# Import the new Estimator API from the revised core script
 from ordinal_flow_core import (
-    category_effect_from_probs,
-    cumulative_ge_effect_from_probs,
-    cumulative_ge_from_probs,
     device,
-    empirical_probs_by_treatment,
-    fit_ordered_sm,
-    ordered_sm_effects,
-    train_model_free_flow,
-    train_ordered_flow,
-    wasserstein_unit_from_probs,
+    StructuredOrdinalFlow,
+    ModelFreeOrdinalFlow,
+    fit_ordered_sm_baseline,
 )
 
 torch.set_default_dtype(torch.float64)
+
 def configure_runtime(torch_threads: int) -> None:
     if torch_threads > 0:
         torch.set_num_threads(torch_threads)
@@ -44,7 +40,6 @@ def configure_runtime(torch_threads: int) -> None:
         print(f"  cuda device: {torch.cuda.get_device_name(0)}")
     print(f"  torch threads: {torch.get_num_threads()}")
 
-
 DEFAULT_SETTINGS = [
     "normal_linear",
     "logistic_linear",
@@ -55,7 +50,6 @@ DEFAULT_SETTINGS = [
     "high_dimensional",
 ]
 
-
 # ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------
@@ -63,11 +57,9 @@ DEFAULT_SETTINGS = [
 def parse_sample_sizes(s: str) -> List[int]:
     return [int(x.strip()) for x in s.split(",") if x.strip()]
 
-
 def x_columns(df: pd.DataFrame) -> List[str]:
     cols = [c for c in df.columns if c.startswith("x") and c[1:].isdigit()]
     return sorted(cols, key=lambda c: int(c[1:]))
-
 
 def load_metadata(path: Optional[str]) -> Dict:
     if path is None or not os.path.exists(path):
@@ -77,28 +69,28 @@ def load_metadata(path: Optional[str]) -> Dict:
 
 def truth_from_metadata(meta: Dict) -> Dict[str, object]:
     if not meta or "truth" not in meta:
-        raise ValueError(
-            "Metadata JSON with a 'truth' field is required. "
-            "Regenerate populations with the revised generate_pop.py."
-        )
+        raise ValueError("Metadata JSON with a 'truth' field is required.")
 
     truth = meta["truth"]
+    J = int(meta.get("J", len(truth["category_effect"])))
+    
+    # Align Cumulative GE length (Drop P(Y>=1) which is always 0.0)
+    cum_ge_eff = np.asarray(truth["cum_ge_effect"], dtype=float)
+    if len(cum_ge_eff) == J:
+        cum_ge_eff = cum_ge_eff[1:]
+
     return {
-        "J": int(meta.get("J", len(truth["category_effect"]))),
+        "J": J,
         "p0": np.asarray(truth["p0"], dtype=float),
         "p1": np.asarray(truth["p1"], dtype=float),
         "category_effect": np.asarray(truth["category_effect"], dtype=float),
-        "cum_ge0": np.asarray(truth["cum_ge0"], dtype=float),
-        "cum_ge1": np.asarray(truth["cum_ge1"], dtype=float),
-        "cum_ge_effect": np.asarray(truth["cum_ge_effect"], dtype=float),
+        "cum_ge_effect": cum_ge_eff,
         "wasserstein_unit": float(truth["wasserstein_unit"]),
     }
 
 def safe_array(x, length: Optional[int] = None) -> np.ndarray:
     if x is None:
-        if length is None:
-            return np.array([np.nan])
-        return np.full(length, np.nan)
+        return np.full(length, np.nan) if length is not None else np.array([np.nan])
     arr = np.asarray(x, dtype=float)
     if length is not None and arr.shape[0] != length:
         out = np.full(length, np.nan)
@@ -107,7 +99,7 @@ def safe_array(x, length: Optional[int] = None) -> np.ndarray:
         return out
     return arr
 
-def add_vector_records(records, setting, n, rep, model, metric, estimate, truth):
+def add_vector_records(records, setting, n, rep, model, metric, estimate, truth, start_idx=1):
     estimate = np.asarray(estimate, dtype=float)
     truth = np.asarray(truth, dtype=float)
     for j in range(len(truth)):
@@ -117,188 +109,102 @@ def add_vector_records(records, setting, n, rep, model, metric, estimate, truth)
             "rep": rep,
             "model": model,
             "metric": metric,
-            "index": j + 1,
+            "index": start_idx + j,
             "estimate": float(estimate[j]),
             "truth": float(truth[j]),
         })
 
-
 def add_scalar_record(records, setting, n, rep, model, metric, estimate, truth):
     records.append({
-        "setting": setting,
-        "n": n,
-        "rep": rep,
-        "model": model,
-        "metric": metric,
-        "index": 1,
-        "estimate": float(estimate),
-        "truth": float(truth),
+        "setting": setting, "n": n, "rep": rep, "model": model, 
+        "metric": metric, "index": 1, "estimate": float(estimate), "truth": float(truth),
     })
 
-
 def add_beta_records(records, setting, n, rep, model, beta):
-    if beta is None:
-        return
-    beta = np.asarray(beta, dtype=float)
-    for k, val in enumerate(beta):
+    if beta is None: return
+    for k, val in enumerate(np.asarray(beta, dtype=float)):
         records.append({
-            "setting": setting,
-            "n": n,
-            "rep": rep,
-            "model": model,
-            "metric": "latent_beta",
-            "index": k,
-            "estimate": float(val),
-            "truth": np.nan,
+            "setting": setting, "n": n, "rep": rep, "model": model,
+            "metric": "latent_beta", "index": k, "estimate": float(val), "truth": np.nan,
         })
 
 def model_failure_row(setting: str, n: int, rep: int, model: str, err: Exception) -> Dict:
     return {
-        "setting": setting,
-        "n": n,
-        "rep": rep,
-        "model": model,
-        "error": repr(err),
-        "traceback": traceback.format_exc(limit=3),
+        "setting": setting, "n": n, "rep": rep, "model": model,
+        "error": repr(err), "traceback": traceback.format_exc(limit=3),
     }
 
-
 # ---------------------------------------------------------------------
-# One replication
+# Estimator Wrappers for One Replication
 # ---------------------------------------------------------------------
 
 def evaluate_empirical(y: np.ndarray, d: np.ndarray, J: int) -> Dict[str, object]:
-    out = empirical_probs_by_treatment(y, d, J=J)
+    p = {}
+    for val in [0, 1]:
+        mask = (d == val)
+        p[val] = np.array([(y[mask] == j).mean() for j in range(1, J + 1)], dtype=float) if np.any(mask) else np.full(J, np.nan)
+    
+    cat_eff = p[1] - p[0]
+    cge_eff = (np.cumsum(p[1][::-1])[::-1] - np.cumsum(p[0][::-1])[::-1])[1:] # Drop P(Y>=1)
+    wass = np.sum(np.abs(np.cumsum(p[1])[:-1] - np.cumsum(p[0])[:-1]))
+    
     return {
-        "category_effect": safe_array(out["category_effect"], J),
-        "cum_ge_effect": safe_array(out["cum_ge_effect"], J),
-        "wasserstein_unit": float(out["wasserstein_unit"]),
+        "category_effect": safe_array(cat_eff, J),
+        "cum_ge_effect": safe_array(cge_eff, J - 1),
+        "wasserstein_unit": float(wass),
         "beta": None,
     }
 
-
-def evaluate_ordered_model(
-    *,
-    y: torch.Tensor,
-    X: torch.Tensor,
-    link: str,
-    treatment_idx: int,
-    J: int,
-) -> Dict[str, object]:
-    beta, thresholds, res = fit_ordered_sm(y, X, link=link, normalize=True)
-    effects = ordered_sm_effects(res, X, treatment_idx=treatment_idx)
+def evaluate_ordered_model(*, y: np.ndarray, X: np.ndarray, link: str, treatment_idx: int, J: int) -> Dict[str, object]:
+    effects, res = fit_ordered_sm_baseline(X, y, treatment_idx=treatment_idx, link=link)
+    
+    p = X.shape[1]
+    beta = res.params.values[:p]
+    thresholds = res.params.values[p:]
+    
     return {
         "category_effect": safe_array(effects["category_effect"], J),
-        "cum_ge_effect": safe_array(effects["cum_ge_effect"], J),
+        "cum_ge_effect": safe_array(effects["cum_ge_effect"], J - 1),
         "wasserstein_unit": float(effects["wasserstein_unit"]),
-        "beta": safe_array(beta, X.shape[1]),
+        "beta": safe_array(beta, p),
         "thresholds": safe_array(thresholds),
     }
 
-
-def evaluate_structured_flow(
-    *,
-    y: torch.Tensor,
-    X: torch.Tensor,
-    treatment_idx: int,
-    J: int,
-    flow_bins: int,
-    flow_bounds: float,
-    epochs: int,
-    lr: float,
-    use_lbfgs: bool,
-    lbfgs_steps: int,
-    verbose: bool,
-) -> Dict[str, object]:
-    model = train_ordered_flow(
-        X,
-        y,
-        Z=None,
-        flow_bins=flow_bins,
-        bounds=flow_bounds,
-        epochs=epochs,
-        lr=lr,
-        use_lbfgs=use_lbfgs,
-        lbfgs_steps=lbfgs_steps,
-        init_probit=True,
-        verbose=verbose,
-    )
-    p1, p0 = model.counterfactual_probs(X, treatment_idx=treatment_idx)
-    beta = model.beta.detach().cpu().numpy()
+def evaluate_structured_flow(*, y: np.ndarray, X: np.ndarray, treatment_idx: int, J: int, flow_bins: int, flow_bounds: float, epochs: int, lr: float, use_lbfgs: bool, verbose: bool) -> Dict[str, object]:
+    model = StructuredOrdinalFlow(J=J, q=0, flow_bins=flow_bins, bounds=flow_bounds)
+    model.fit(X, y, epochs=epochs, lr=lr, use_lbfgs=use_lbfgs, verbose=verbose)
+    
+    effects = model.compute_effects(X, treatment_idx=treatment_idx)
+    beta = model.model.beta.detach().cpu().numpy()
+    
     return {
-        "category_effect": category_effect_from_probs(p1, p0),
-        "cum_ge_effect": cumulative_ge_effect_from_probs(p1, p0),
-        "wasserstein_unit": wasserstein_unit_from_probs(p1, p0),
+        "category_effect": safe_array(effects["category_effect"], J),
+        "cum_ge_effect": safe_array(effects["cum_ge_effect"], J - 1),
+        "wasserstein_unit": float(effects["wasserstein_unit"]),
         "beta": safe_array(beta, X.shape[1]),
     }
 
-
-def evaluate_model_free_flow(
-    *,
-    y: torch.Tensor,
-    X: torch.Tensor,
-    treatment_idx: int,
-    J: int,
-    flow_bins: int,
-    flow_bounds: float,
-    epochs: int,
-    lr: float,
-    use_lbfgs: bool,
-    lbfgs_steps: int,
-    verbose: bool,
-) -> Dict[str, object]:
-    D = X[:, treatment_idx]
-    if X.shape[1] > 1:
-        X_cov = torch.cat([X[:, :treatment_idx], X[:, treatment_idx + 1:]], dim=1)
-    else:
-        X_cov = torch.empty((X.shape[0], 0), dtype=X.dtype, device=X.device)
-
-    model = train_model_free_flow(
-        X_cov,
-        y,
-        D,
-        flow_bins=flow_bins,
-        bounds=flow_bounds,
-        epochs=epochs,
-        lr=lr,
-        use_lbfgs=use_lbfgs,
-        lbfgs_steps=lbfgs_steps,
-        init_probit=True,
-        verbose=verbose,
-    )
-    p1, p0 = model.counterfactual_probs(X_cov)
+def evaluate_model_free_flow(*, y: np.ndarray, X: np.ndarray, treatment_idx: int, J: int, flow_bins: int, flow_bounds: float, epochs: int, lr: float, use_lbfgs: bool, verbose: bool) -> Dict[str, object]:
+    model = ModelFreeOrdinalFlow(J=J, flow_bins=flow_bins, bounds=flow_bounds)
+    model.fit(X, y, epochs=epochs, lr=lr, use_lbfgs=use_lbfgs, verbose=verbose)
+    
+    effects = model.compute_effects(X, treatment_idx=treatment_idx)
+    
     return {
-        "category_effect": category_effect_from_probs(p1, p0),
-        "cum_ge_effect": cumulative_ge_effect_from_probs(p1, p0),
-        "wasserstein_unit": wasserstein_unit_from_probs(p1, p0),
+        "category_effect": safe_array(effects["category_effect"], J),
+        "cum_ge_effect": safe_array(effects["cum_ge_effect"], J - 1),
+        "wasserstein_unit": float(effects["wasserstein_unit"]),
         "beta": None,
     }
-
 
 # ---------------------------------------------------------------------
 # Monte Carlo loop
 # ---------------------------------------------------------------------
 def run_mc_for_n(
-    *,
-    df_pop: pd.DataFrame,
-    df_idx: pd.DataFrame,
-    truth: Dict[str, object],
-    setting: str,
-    n: int,
-    R: int,
-    J: int,
-    treatment_idx: int,
-    flow_bins: int,
-    flow_bounds: float,
-    epochs: int,
-    lr: float,
-    use_lbfgs: bool,
-    lbfgs_steps_structured: int,
-    lbfgs_steps_model_free: int,
-    rep_start: int,
-    rep_end: int,
-    models_to_run: set[str],
-    verbose: bool,
+    *, df_pop: pd.DataFrame, df_idx: pd.DataFrame, truth: Dict[str, object], setting: str,
+    n: int, R: int, J: int, treatment_idx: int, flow_bins: int, flow_bounds: float,
+    epochs: int, lr: float, use_lbfgs: bool, rep_start: int, rep_end: int,
+    models_to_run: set[str], verbose: bool,
 ) -> Tuple[List[Dict], List[Dict]]:
 
     cols = x_columns(df_pop)
@@ -306,21 +212,13 @@ def run_mc_for_n(
     true_cum = np.asarray(truth["cum_ge_effect"], dtype=float)
     true_wass = float(truth["wasserstein_unit"])
 
-    records: List[Dict] = []
-    failures: List[Dict] = []
+    records, failures = [], []
     df_n = df_idx[df_idx["n"] == n].copy()
 
     for r in range(rep_start, rep_end):
         df_r = df_n[df_n["rep"] == r]
         if df_r.empty:
-            failures.append({
-                "setting": setting,
-                "n": n,
-                "rep": r,
-                "model": "index",
-                "error": "Missing replication indices.",
-                "traceback": "",
-            })
+            failures.append(model_failure_row(setting, n, r, "index", Exception("Missing replication indices.")))
             continue
 
         idx = df_r["idx"].to_numpy(dtype=int)
@@ -328,72 +226,42 @@ def run_mc_for_n(
 
         y_np = sample["y"].to_numpy(dtype=int)
         X_np = sample[cols].to_numpy(dtype=float)
-
-        y = torch.from_numpy(y_np).to(device=device, dtype=torch.long)
-        X = torch.from_numpy(X_np).to(device=device, dtype=torch.float64)
         d_np = X_np[:, treatment_idx].astype(int)
 
         def store(model_name: str, out: Dict[str, object]):
-            add_vector_records(records, setting, n, r, model_name, "category_effect",
-                               out["category_effect"], true_cat)
-            add_vector_records(records, setting, n, r, model_name, "cumulative_ge_effect",
-                               out["cum_ge_effect"], true_cum)
-            add_scalar_record(records, setting, n, r, model_name, "wasserstein_unit",
-                              out["wasserstein_unit"], true_wass)
+            add_vector_records(records, setting, n, r, model_name, "category_effect", out["category_effect"], true_cat, start_idx=1)
+            # CGE starts from P(Y >= 2), hence start_idx=2
+            add_vector_records(records, setting, n, r, model_name, "cumulative_ge_effect", out["cum_ge_effect"], true_cum, start_idx=2)
+            add_scalar_record(records, setting, n, r, model_name, "wasserstein_unit", out["wasserstein_unit"], true_wass)
             add_beta_records(records, setting, n, r, model_name, out.get("beta"))
 
         if "empirical" in models_to_run:
-            try:
-                store("empirical", evaluate_empirical(y_np, d_np, J))
-            except Exception as err:
-                failures.append(model_failure_row(setting, n, r, "empirical", err))
+            try: store("empirical", evaluate_empirical(y_np, d_np, J))
+            except Exception as err: failures.append(model_failure_row(setting, n, r, "empirical", err))
 
         if "ordered_probit" in models_to_run:
-            try:
-                out = evaluate_ordered_model(
-                    y=y, X=X, link="probit", treatment_idx=treatment_idx, J=J
-                )
-                store("ordered_probit", out)
-            except Exception as err:
-                failures.append(model_failure_row(setting, n, r, "ordered_probit", err))
+            try: store("ordered_probit", evaluate_ordered_model(y=y_np, X=X_np, link="probit", treatment_idx=treatment_idx, J=J))
+            except Exception as err: failures.append(model_failure_row(setting, n, r, "ordered_probit", err))
 
         if "ordered_logit" in models_to_run:
-            try:
-                out = evaluate_ordered_model(
-                    y=y, X=X, link="logit", treatment_idx=treatment_idx, J=J
-                )
-                store("ordered_logit", out)
-            except Exception as err:
-                failures.append(model_failure_row(setting, n, r, "ordered_logit", err))
+            try: store("ordered_logit", evaluate_ordered_model(y=y_np, X=X_np, link="logit", treatment_idx=treatment_idx, J=J))
+            except Exception as err: failures.append(model_failure_row(setting, n, r, "ordered_logit", err))
 
         if "structured_flow" in models_to_run:
-            try:
-                out = evaluate_structured_flow(
-                    y=y, X=X, treatment_idx=treatment_idx, J=J,
-                    flow_bins=flow_bins, flow_bounds=flow_bounds,
-                    epochs=epochs, lr=lr, use_lbfgs=use_lbfgs,
-                    lbfgs_steps=lbfgs_steps_structured, verbose=verbose,
-                )
-                store("structured_flow", out)
-            except Exception as err:
-                failures.append(model_failure_row(setting, n, r, "structured_flow", err))
+            try: store("structured_flow", evaluate_structured_flow(
+                y=y_np, X=X_np, treatment_idx=treatment_idx, J=J, flow_bins=flow_bins, flow_bounds=flow_bounds,
+                epochs=epochs, lr=lr, use_lbfgs=use_lbfgs, verbose=verbose))
+            except Exception as err: failures.append(model_failure_row(setting, n, r, "structured_flow", err))
 
         if "model_free_flow" in models_to_run:
-            try:
-                out = evaluate_model_free_flow(
-                    y=y, X=X, treatment_idx=treatment_idx, J=J,
-                    flow_bins=flow_bins, flow_bounds=flow_bounds,
-                    epochs=epochs, lr=lr, use_lbfgs=use_lbfgs,
-                    lbfgs_steps=lbfgs_steps_model_free, verbose=verbose,
-                )
-                store("model_free_flow", out)
-            except Exception as err:
-                failures.append(model_failure_row(setting, n, r, "model_free_flow", err))
+            try: store("model_free_flow", evaluate_model_free_flow(
+                y=y_np, X=X_np, treatment_idx=treatment_idx, J=J, flow_bins=flow_bins, flow_bounds=flow_bounds,
+                epochs=epochs, lr=lr, use_lbfgs=use_lbfgs, verbose=verbose))
+            except Exception as err: failures.append(model_failure_row(setting, n, r, "model_free_flow", err))
 
         print(f"  setting={setting}, n={n}: replication {r} completed")
 
     return records, failures
-
 
 # ---------------------------------------------------------------------
 # File loading and main
@@ -405,14 +273,11 @@ def paths_for_setting(args: argparse.Namespace, setting: str) -> Tuple[str, str,
     meta_json = os.path.join(args.data_dir, f"metadata_{setting}_N{args.N}.json")
     return pop_csv, idx_csv, meta_json if os.path.exists(meta_json) else None
 
-
 def run_one_setting(args: argparse.Namespace, setting: str) -> None:
     pop_csv, idx_csv, meta_json = paths_for_setting(args, setting)
 
-    if not os.path.exists(pop_csv):
-        raise FileNotFoundError(f"Population file not found: {pop_csv}")
-    if not os.path.exists(idx_csv):
-        raise FileNotFoundError(f"Index file not found: {idx_csv}")
+    if not os.path.exists(pop_csv): raise FileNotFoundError(f"Population file not found: {pop_csv}")
+    if not os.path.exists(idx_csv): raise FileNotFoundError(f"Index file not found: {idx_csv}")
 
     df_pop = pd.read_csv(pop_csv)
     df_idx = pd.read_csv(idx_csv)
@@ -425,45 +290,25 @@ def run_one_setting(args: argparse.Namespace, setting: str) -> None:
     rep_end = int(args.rep_end if args.rep_end is not None else args.R)
     models_to_run = {m.strip() for m in args.models.split(",") if m.strip()}
 
-
     print(f"Monte Carlo setting={setting}")
-    print(f"  population: {pop_csv}")
-    print(f"  indices:    {idx_csv}")
-    print(f"  metadata:   {meta_json}")
-    print(f"  N={len(df_pop)}, J={J}, sample sizes={sample_sizes}, R={args.R}")
+    print(f"  population: {pop_csv} | N={len(df_pop)}, J={J}, sample sizes={sample_sizes}, R={args.R}")
 
-    all_records: List[Dict] = []
-    all_failures: List[Dict] = []
+    all_records, all_failures = [], []
 
     for n in sample_sizes:
         records, failures = run_mc_for_n(
-            df_pop=df_pop,
-            df_idx=df_idx,
-            truth = truth,
-            setting=setting,
-            n=n,
-            R=args.R,
-            J=J,
-            treatment_idx=args.treatment_idx,
-            flow_bins=args.flow_bins,
-            flow_bounds=args.flow_bounds,
-            epochs=args.epochs,
-            lr=args.lr,
-            use_lbfgs=not args.no_lbfgs,
-            lbfgs_steps_structured=args.lbfgs_steps_structured,
-            lbfgs_steps_model_free=args.lbfgs_steps_model_free,
-            rep_start=rep_start,
-            rep_end=rep_end,
-            models_to_run=models_to_run,
-            verbose=args.verbose,
+            df_pop=df_pop, df_idx=df_idx, truth=truth, setting=setting, n=n, R=args.R, J=J,
+            treatment_idx=args.treatment_idx, flow_bins=args.flow_bins, flow_bounds=args.flow_bounds,
+            epochs=args.epochs, lr=args.lr, use_lbfgs=not args.no_lbfgs,
+            rep_start=rep_start, rep_end=rep_end, models_to_run=models_to_run, verbose=args.verbose,
         )
         all_records.extend(records)
         all_failures.extend(failures)
 
     os.makedirs(args.out_dir, exist_ok=True)
-
-    df_res = pd.DataFrame(all_records)
     suffix = args.output_suffix or f"rep{rep_start}_{rep_end}"
+    
+    df_res = pd.DataFrame(all_records)
     out_csv = os.path.join(args.out_dir, f"mc_results_{setting}_{suffix}_N{args.N}.csv")
     df_res.to_csv(out_csv, index=False)
     print(f"Saved results: {out_csv}")
@@ -473,10 +318,6 @@ def run_one_setting(args: argparse.Namespace, setting: str) -> None:
         fail_csv = os.path.join(args.out_dir, f"mc_failures_{setting}_{suffix}_N{args.N}.csv")
         df_fail.to_csv(fail_csv, index=False)
         print(f"Saved failures: {fail_csv}")
-
-    print("Preview:")
-    print(df_res.head(12))
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run Monte Carlo simulations for ordinal response estimators.")
@@ -493,11 +334,9 @@ def main() -> None:
 
     parser.add_argument("--flow-bins", type=int, default=12)
     parser.add_argument("--flow-bounds", type=float, default=10.0)
-    parser.add_argument("--epochs", type=int, default=200)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--epochs", type=int, default=300)
+    parser.add_argument("--lr", type=float, default=5e-3)
     parser.add_argument("--no-lbfgs", action="store_true")
-    parser.add_argument("--lbfgs-steps-structured", type=int, default=50)
-    parser.add_argument("--lbfgs-steps-model-free", type=int, default=30)
     parser.add_argument("--verbose", action="store_true")
 
     parser.add_argument("--rep-start", type=int, default=0)
@@ -512,7 +351,6 @@ def main() -> None:
     settings = DEFAULT_SETTINGS if args.all_settings else [args.setting]
     for setting in settings:
         run_one_setting(args, setting)
-
 
 if __name__ == "__main__":
     main()
