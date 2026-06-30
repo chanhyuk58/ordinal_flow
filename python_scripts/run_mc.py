@@ -452,6 +452,9 @@ def run_one_setting(args: argparse.Namespace, setting: str) -> None:
             use_lbfgs=not args.no_lbfgs,
             lbfgs_steps_structured=args.lbfgs_steps_structured,
             lbfgs_steps_model_free=args.lbfgs_steps_model_free,
+            rep_start=rep_start,
+            rep_end=rep_end,
+            models_to_run=models_to_run,
             verbose=args.verbose,
         )
         all_records.extend(records)
