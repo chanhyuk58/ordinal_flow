@@ -32,6 +32,17 @@ from ordinal_flow_core import (
 )
 
 torch.set_default_dtype(torch.float64)
+def configure_runtime(torch_threads: int) -> None:
+    if torch_threads > 0:
+        torch.set_num_threads(torch_threads)
+        torch.set_num_interop_threads(1)
+
+    print("Runtime:")
+    print(f"  torch device: {device}")
+    print(f"  cuda available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"  cuda device: {torch.cuda.get_device_name(0)}")
+    print(f"  torch threads: {torch.get_num_threads()}")
 
 
 DEFAULT_SETTINGS = [
@@ -96,75 +107,50 @@ def safe_array(x, length: Optional[int] = None) -> np.ndarray:
         return out
     return arr
 
-
-def summarize_vector(estimates: List[np.ndarray], truth: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return mean estimate, bias, RMSE for vector estimates."""
-    arr = np.asarray(estimates, dtype=float)
+def add_vector_records(records, setting, n, rep, model, metric, estimate, truth):
+    estimate = np.asarray(estimate, dtype=float)
     truth = np.asarray(truth, dtype=float)
-    err = arr - truth[None, :]
-    mean_est = np.nanmean(arr, axis=0)
-    bias = np.nanmean(err, axis=0)
-    rmse = np.sqrt(np.nanmean(err ** 2, axis=0))
-    return mean_est, bias, rmse
-
-
-def summarize_scalar(estimates: List[float], truth: float) -> Tuple[float, float, float]:
-    arr = np.asarray(estimates, dtype=float)
-    err = arr - float(truth)
-    mean_est = float(np.nanmean(arr))
-    bias = float(np.nanmean(err))
-    rmse = float(np.sqrt(np.nanmean(err ** 2)))
-    return mean_est, bias, rmse
-
-
-def append_vector_records(
-    records: List[Dict],
-    *,
-    setting: str,
-    n: int,
-    model: str,
-    metric: str,
-    truth: np.ndarray,
-    estimates: List[np.ndarray],
-) -> None:
-    mean_est, bias, rmse = summarize_vector(estimates, truth)
     for j in range(len(truth)):
         records.append({
             "setting": setting,
             "n": n,
+            "rep": rep,
             "model": model,
             "metric": metric,
             "index": j + 1,
+            "estimate": float(estimate[j]),
             "truth": float(truth[j]),
-            "estimate_mean": float(mean_est[j]),
-            "bias": float(bias[j]),
-            "rmse": float(rmse[j]),
         })
 
 
-def append_scalar_record(
-    records: List[Dict],
-    *,
-    setting: str,
-    n: int,
-    model: str,
-    metric: str,
-    truth: float,
-    estimates: List[float],
-) -> None:
-    mean_est, bias, rmse = summarize_scalar(estimates, truth)
+def add_scalar_record(records, setting, n, rep, model, metric, estimate, truth):
     records.append({
         "setting": setting,
         "n": n,
+        "rep": rep,
         "model": model,
         "metric": metric,
         "index": 1,
+        "estimate": float(estimate),
         "truth": float(truth),
-        "estimate_mean": float(mean_est),
-        "bias": float(bias),
-        "rmse": float(rmse),
     })
 
+
+def add_beta_records(records, setting, n, rep, model, beta):
+    if beta is None:
+        return
+    beta = np.asarray(beta, dtype=float)
+    for k, val in enumerate(beta):
+        records.append({
+            "setting": setting,
+            "n": n,
+            "rep": rep,
+            "model": model,
+            "metric": "latent_beta",
+            "index": k,
+            "estimate": float(val),
+            "truth": np.nan,
+        })
 
 def model_failure_row(setting: str, n: int, rep: int, model: str, err: Exception) -> Dict:
     return {
@@ -309,28 +295,22 @@ def run_mc_for_n(
     use_lbfgs: bool,
     lbfgs_steps_structured: int,
     lbfgs_steps_model_free: int,
+    rep_start: int,
+    rep_end: int,
+    models_to_run: set[str],
     verbose: bool,
 ) -> Tuple[List[Dict], List[Dict]]:
-    cols = x_columns(df_pop)
-    if len(cols) == 0:
-        raise ValueError("No x columns found in population data.")
 
+    cols = x_columns(df_pop)
     true_cat = np.asarray(truth["category_effect"], dtype=float)
     true_cum = np.asarray(truth["cum_ge_effect"], dtype=float)
     true_wass = float(truth["wasserstein_unit"])
 
-    estimates: Dict[str, Dict[str, List]] = {
-        "empirical": {"cat": [], "cum": [], "wass": [], "beta": []},
-        "ordered_probit": {"cat": [], "cum": [], "wass": [], "beta": []},
-        "ordered_logit": {"cat": [], "cum": [], "wass": [], "beta": []},
-        "structured_flow": {"cat": [], "cum": [], "wass": [], "beta": []},
-        "model_free_flow": {"cat": [], "cum": [], "wass": [], "beta": []},
-    }
-
+    records: List[Dict] = []
     failures: List[Dict] = []
     df_n = df_idx[df_idx["n"] == n].copy()
 
-    for r in range(R):
+    for r in range(rep_start, rep_end):
         df_r = df_n[df_n["rep"] == r]
         if df_r.empty:
             failures.append({
@@ -353,158 +333,64 @@ def run_mc_for_n(
         X = torch.from_numpy(X_np).to(device=device, dtype=torch.float64)
         d_np = X_np[:, treatment_idx].astype(int)
 
-        # 1. Empirical treatment-arm distribution
-        try:
-            out = evaluate_empirical(y_np, d_np, J)
-            estimates["empirical"]["cat"].append(out["category_effect"])
-            estimates["empirical"]["cum"].append(out["cum_ge_effect"])
-            estimates["empirical"]["wass"].append(out["wasserstein_unit"])
-        except Exception as err:
-            failures.append(model_failure_row(setting, n, r, "empirical", err))
-            estimates["empirical"]["cat"].append(np.full(J, np.nan))
-            estimates["empirical"]["cum"].append(np.full(J, np.nan))
-            estimates["empirical"]["wass"].append(np.nan)
+        def store(model_name: str, out: Dict[str, object]):
+            add_vector_records(records, setting, n, r, model_name, "category_effect",
+                               out["category_effect"], true_cat)
+            add_vector_records(records, setting, n, r, model_name, "cumulative_ge_effect",
+                               out["cum_ge_effect"], true_cum)
+            add_scalar_record(records, setting, n, r, model_name, "wasserstein_unit",
+                              out["wasserstein_unit"], true_wass)
+            add_beta_records(records, setting, n, r, model_name, out.get("beta"))
 
-        # 2. Ordered probit
-        try:
-            out = evaluate_ordered_model(
-                y=y,
-                X=X,
-                link="probit",
-                treatment_idx=treatment_idx,
-                J=J,
-            )
-            estimates["ordered_probit"]["cat"].append(out["category_effect"])
-            estimates["ordered_probit"]["cum"].append(out["cum_ge_effect"])
-            estimates["ordered_probit"]["wass"].append(out["wasserstein_unit"])
-            estimates["ordered_probit"]["beta"].append(out["beta"])
-        except Exception as err:
-            failures.append(model_failure_row(setting, n, r, "ordered_probit", err))
-            estimates["ordered_probit"]["cat"].append(np.full(J, np.nan))
-            estimates["ordered_probit"]["cum"].append(np.full(J, np.nan))
-            estimates["ordered_probit"]["wass"].append(np.nan)
-            estimates["ordered_probit"]["beta"].append(np.full(len(cols), np.nan))
+        if "empirical" in models_to_run:
+            try:
+                store("empirical", evaluate_empirical(y_np, d_np, J))
+            except Exception as err:
+                failures.append(model_failure_row(setting, n, r, "empirical", err))
 
-        # 3. Ordered logit
-        try:
-            out = evaluate_ordered_model(
-                y=y,
-                X=X,
-                link="logit",
-                treatment_idx=treatment_idx,
-                J=J,
-            )
-            estimates["ordered_logit"]["cat"].append(out["category_effect"])
-            estimates["ordered_logit"]["cum"].append(out["cum_ge_effect"])
-            estimates["ordered_logit"]["wass"].append(out["wasserstein_unit"])
-            estimates["ordered_logit"]["beta"].append(out["beta"])
-        except Exception as err:
-            failures.append(model_failure_row(setting, n, r, "ordered_logit", err))
-            estimates["ordered_logit"]["cat"].append(np.full(J, np.nan))
-            estimates["ordered_logit"]["cum"].append(np.full(J, np.nan))
-            estimates["ordered_logit"]["wass"].append(np.nan)
-            estimates["ordered_logit"]["beta"].append(np.full(len(cols), np.nan))
+        if "ordered_probit" in models_to_run:
+            try:
+                out = evaluate_ordered_model(
+                    y=y, X=X, link="probit", treatment_idx=treatment_idx, J=J
+                )
+                store("ordered_probit", out)
+            except Exception as err:
+                failures.append(model_failure_row(setting, n, r, "ordered_probit", err))
 
-        # 4. Structured flow
-        try:
-            out = evaluate_structured_flow(
-                y=y,
-                X=X,
-                treatment_idx=treatment_idx,
-                J=J,
-                flow_bins=flow_bins,
-                flow_bounds=flow_bounds,
-                epochs=epochs,
-                lr=lr,
-                use_lbfgs=use_lbfgs,
-                lbfgs_steps=lbfgs_steps_structured,
-                verbose=verbose,
-            )
-            estimates["structured_flow"]["cat"].append(out["category_effect"])
-            estimates["structured_flow"]["cum"].append(out["cum_ge_effect"])
-            estimates["structured_flow"]["wass"].append(out["wasserstein_unit"])
-            estimates["structured_flow"]["beta"].append(out["beta"])
-        except Exception as err:
-            failures.append(model_failure_row(setting, n, r, "structured_flow", err))
-            estimates["structured_flow"]["cat"].append(np.full(J, np.nan))
-            estimates["structured_flow"]["cum"].append(np.full(J, np.nan))
-            estimates["structured_flow"]["wass"].append(np.nan)
-            estimates["structured_flow"]["beta"].append(np.full(len(cols), np.nan))
+        if "ordered_logit" in models_to_run:
+            try:
+                out = evaluate_ordered_model(
+                    y=y, X=X, link="logit", treatment_idx=treatment_idx, J=J
+                )
+                store("ordered_logit", out)
+            except Exception as err:
+                failures.append(model_failure_row(setting, n, r, "ordered_logit", err))
 
-        # 5. Model-free conditional flow
-        try:
-            out = evaluate_model_free_flow(
-                y=y,
-                X=X,
-                treatment_idx=treatment_idx,
-                J=J,
-                flow_bins=flow_bins,
-                flow_bounds=flow_bounds,
-                epochs=epochs,
-                lr=lr,
-                use_lbfgs=use_lbfgs,
-                lbfgs_steps=lbfgs_steps_model_free,
-                verbose=verbose,
-            )
-            estimates["model_free_flow"]["cat"].append(out["category_effect"])
-            estimates["model_free_flow"]["cum"].append(out["cum_ge_effect"])
-            estimates["model_free_flow"]["wass"].append(out["wasserstein_unit"])
-        except Exception as err:
-            failures.append(model_failure_row(setting, n, r, "model_free_flow", err))
-            estimates["model_free_flow"]["cat"].append(np.full(J, np.nan))
-            estimates["model_free_flow"]["cum"].append(np.full(J, np.nan))
-            estimates["model_free_flow"]["wass"].append(np.nan)
+        if "structured_flow" in models_to_run:
+            try:
+                out = evaluate_structured_flow(
+                    y=y, X=X, treatment_idx=treatment_idx, J=J,
+                    flow_bins=flow_bins, flow_bounds=flow_bounds,
+                    epochs=epochs, lr=lr, use_lbfgs=use_lbfgs,
+                    lbfgs_steps=lbfgs_steps_structured, verbose=verbose,
+                )
+                store("structured_flow", out)
+            except Exception as err:
+                failures.append(model_failure_row(setting, n, r, "structured_flow", err))
 
-        if (r + 1) % max(1, min(10, R)) == 0:
-            print(f"  setting={setting}, n={n}: replication {r + 1}/{R} completed")
+        if "model_free_flow" in models_to_run:
+            try:
+                out = evaluate_model_free_flow(
+                    y=y, X=X, treatment_idx=treatment_idx, J=J,
+                    flow_bins=flow_bins, flow_bounds=flow_bounds,
+                    epochs=epochs, lr=lr, use_lbfgs=use_lbfgs,
+                    lbfgs_steps=lbfgs_steps_model_free, verbose=verbose,
+                )
+                store("model_free_flow", out)
+            except Exception as err:
+                failures.append(model_failure_row(setting, n, r, "model_free_flow", err))
 
-    records: List[Dict] = []
-
-    for model, vals in estimates.items():
-        append_vector_records(
-            records,
-            setting=setting,
-            n=n,
-            model=model,
-            metric="category_effect",
-            truth=true_cat,
-            estimates=vals["cat"],
-        )
-        append_vector_records(
-            records,
-            setting=setting,
-            n=n,
-            model=model,
-            metric="cumulative_ge_effect",
-            truth=true_cum,
-            estimates=vals["cum"],
-        )
-        append_scalar_record(
-            records,
-            setting=setting,
-            n=n,
-            model=model,
-            metric="wasserstein_unit",
-            truth=true_wass,
-            estimates=vals["wass"],
-        )
-
-        if vals["beta"]:
-            beta_arr = np.asarray(vals["beta"], dtype=float)
-            beta_mean = np.nanmean(beta_arr, axis=0)
-            beta_sd = np.nanstd(beta_arr, axis=0)
-            for k in range(beta_arr.shape[1]):
-                records.append({
-                    "setting": setting,
-                    "n": n,
-                    "model": model,
-                    "metric": "latent_beta",
-                    "index": k,
-                    "truth": np.nan,
-                    "estimate_mean": float(beta_mean[k]),
-                    "bias": np.nan,
-                    "rmse": float(beta_sd[k]),
-                })
+        print(f"  setting={setting}, n={n}: replication {r} completed")
 
     return records, failures
 
@@ -535,6 +421,9 @@ def run_one_setting(args: argparse.Namespace, setting: str) -> None:
 
     J = int(args.J if args.J is not None else truth["J"])
     sample_sizes = parse_sample_sizes(args.sample_sizes)
+    rep_start = int(args.rep_start)
+    rep_end = int(args.rep_end if args.rep_end is not None else args.R)
+    models_to_run = {m.strip() for m in args.models.split(",") if m.strip()}
 
 
     print(f"Monte Carlo setting={setting}")
@@ -571,13 +460,14 @@ def run_one_setting(args: argparse.Namespace, setting: str) -> None:
     os.makedirs(args.out_dir, exist_ok=True)
 
     df_res = pd.DataFrame(all_records)
-    out_csv = os.path.join(args.out_dir, f"mc_results_{setting}_R{args.R}_N{args.N}.csv")
+    suffix = args.output_suffix or f"rep{rep_start}_{rep_end}"
+    out_csv = os.path.join(args.out_dir, f"mc_results_{setting}_{suffix}_N{args.N}.csv")
     df_res.to_csv(out_csv, index=False)
     print(f"Saved results: {out_csv}")
 
     if all_failures:
         df_fail = pd.DataFrame(all_failures)
-        fail_csv = os.path.join(args.out_dir, f"mc_failures_{setting}_R{args.R}_N{args.N}.csv")
+        fail_csv = os.path.join(args.out_dir, f"mc_failures_{setting}_{suffix}_N{args.N}.csv")
         df_fail.to_csv(fail_csv, index=False)
         print(f"Saved failures: {fail_csv}")
 
@@ -607,7 +497,14 @@ def main() -> None:
     parser.add_argument("--lbfgs-steps-model-free", type=int, default=30)
     parser.add_argument("--verbose", action="store_true")
 
+    parser.add_argument("--rep-start", type=int, default=0)
+    parser.add_argument("--rep-end", type=int, default=None)
+    parser.add_argument("--models", default="empirical,ordered_probit,ordered_logit,structured_flow,model_free_flow")
+    parser.add_argument("--torch-threads", type=int, default=1)
+    parser.add_argument("--output-suffix", default="")
+
     args = parser.parse_args()
+    configure_runtime(args.torch_threads)
 
     settings = DEFAULT_SETTINGS if args.all_settings else [args.setting]
     for setting in settings:
