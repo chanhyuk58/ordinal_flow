@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import os
+# Prevent OpenMP runtime crashes and thread contention
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-# Uncomment the next line if you still experience CPU thrashing
-# os.environ["OMP_NUM_THREADS"] = "4" 
 
 import math
 from typing import Dict, Optional, Tuple, Any, List
@@ -140,8 +139,10 @@ class OrderedFlowModel(nn.Module):
     def __init__(self, p, J, q=0, flow_bins=16, bounds=8.0, min_gap=1e-4):
         super().__init__()
         self.p, self.q, self.J, self.min_gap = p, q, J, min_gap
-        self.beta = nn.Parameter(torch.zeros(p))
-        self.alpha1_intercept = nn.Parameter(torch.tensor(0.0))
+        
+        self.theta = nn.Parameter(torch.ones(p))
+        
+        self.alpha1_intercept = nn.Parameter(torch.tensor(0.0), requires_grad=False)
         self.alpha1_gamma = nn.Parameter(torch.zeros(q)) if q > 0 else None
 
         if self.J > 2:
@@ -151,9 +152,16 @@ class OrderedFlowModel(nn.Module):
             self.register_parameter('gap_intercepts_raw', None)
             self.register_parameter('gap_gammas', None)
 
-        self.a_raw = nn.Parameter(softplus_inv(torch.tensor(1.0)), requires_grad=False)
-        self.b = nn.Parameter(torch.tensor(0.0), requires_grad=False)
+        self.a_raw = nn.Parameter(softplus_inv(torch.tensor(1.0)), requires_grad=True)
+        self.b = nn.Parameter(torch.tensor(0.0), requires_grad=True)
         self.flow = GlobalRQS1D(K=flow_bins, bounds=bounds)
+
+    @property
+    def beta(self) -> torch.Tensor:
+        # Analytically guarantee unit L2 norm during training
+        eps = 1e-12
+        norm = torch.norm(self.theta, p=2)
+        return self.theta / torch.clamp(norm, min=eps)
 
     def alphas_obs(self, Z=None):
         n = 1 if Z is None else Z.shape[0]
@@ -185,7 +193,9 @@ class OrderedFlowModel(nn.Module):
         
         finite_mask = torch.isfinite(E_flat)
         if finite_mask.any():
-            Z_flat[finite_mask] = self.flow.inverse(E_flat[finite_mask])
+            # Apply learnable location (b) and scale (a) to the threshold difference
+            a = torch.nn.functional.softplus(self.a_raw)
+            Z_flat[finite_mask] = self.flow.inverse((E_flat[finite_mask] - self.b) / a)
             
         return Z_flat.reshape(X.shape[0], self.J + 1)
 
@@ -274,7 +284,7 @@ def train_flow_model(
     patience: int = 15, delta_eps: float = 1e-4, verbose: bool = False
 ) -> Dict[str, Any]:
     
-    # Warm start: Freeze flow parameters initially
+    # 1. Warm start: Freeze flow parameters initially
     for name, param in model.named_parameters():
         if "flow" in name: param.requires_grad = False
 
@@ -283,13 +293,20 @@ def train_flow_model(
     neg_streak = 0
     history = {'train_nll': []}
 
-    opt_adam = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-4)
+    opt_adam = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
     
     for ep in range(1, epochs + 1):
         if ep == 21:
             for name, param in model.named_parameters():
                 if "flow" in name: param.requires_grad = True
-            opt_adam = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+            
+            flow_params = [p for n, p in model.named_parameters() if "flow" in n]
+            non_flow_params = [p for n, p in model.named_parameters() if "flow" not in n and p.requires_grad]
+            
+            opt_adam = optim.Adam([
+                {"params": flow_params, "lr": lr * 0.1},
+                {"params": non_flow_params, "lr": lr}
+            ])
         
         opt_adam.zero_grad()
         loss = model.neg_loglik(X, y, Z) if Z is not None else model.neg_loglik(X, y)
@@ -413,14 +430,13 @@ class BaseOrdinalFlowEstimator:
             
             estimator.model.load_state_dict(self.model.state_dict())
             
-            # Train lightly (warm started)
             train_flow_model(estimator.model, Xb, yb, Z=Zb, epochs=30, lr=1e-3, use_lbfgs=True, verbose=False)
             
             eff = estimator.compute_effects(X_t, treatment_idx, Z=Z_t)
             
             flat_eff = {"wasserstein_unit": eff["wasserstein_unit"]}
             for i, val in enumerate(eff["category_effect"]): flat_eff[f"AME_cat_{i+1}"] = val
-            for i, val in enumerate(eff["cum_ge_effect"]): flat_eff[f"CGE_cat_{i+2}"] = val # +2 because 1 is dropped
+            for i, val in enumerate(eff["cum_ge_effect"]): flat_eff[f"CGE_cat_{i+2}"] = val
             results.append(flat_eff)
             
         return pd.DataFrame(results).std()
@@ -439,11 +455,22 @@ class StructuredOrdinalFlow(BaseOrdinalFlowEstimator):
             dfX = pd.DataFrame(X_t.cpu().numpy(), columns=[f"x{k}" for k in range(X_t.shape[1])])
             y0 = y_t.cpu().numpy().astype(int) - 1
             mod = OrderedModel(y0, dfX, distr='probit').fit(method='bfgs', disp=False)
-            self.model.beta.data = torch.tensor(mod.params.values[:X_t.shape[1]], dtype=torch.float64, device=device)
+            
+            probit_beta = mod.params.values[:X_t.shape[1]]
             thr_vals = mod.params.values[-(self.J - 1):]
-            self.model.alpha1_intercept.data = torch.tensor(thr_vals[0], dtype=torch.float64, device=device)
+            
+            # Compute exact norm scale 's' of beta coefficients
+            s = np.linalg.norm(probit_beta, ord=2)
+            s = max(s, 1e-8)
+            
+            self.model.theta.data = torch.tensor(probit_beta, dtype=torch.float64, device=device)
+            
+            self.model.a_raw.data = softplus_inv(torch.tensor(1.0 / s, dtype=torch.float64, device=device))
+            self.model.b.data = torch.tensor(-thr_vals[0] / s, dtype=torch.float64, device=device)
+            
             if self.J > 2:
-                gaps = np.maximum(np.diff(thr_vals), self.min_gap * 10)
+                gaps = np.diff(thr_vals) / s
+                gaps = np.maximum(gaps, self.min_gap * 10)
                 self.model.gap_intercepts_raw.data = softplus_inv(torch.tensor(gaps - self.min_gap, dtype=torch.float64, device=device))
         except Exception as e:
             if verbose: print(f"Probit init skipped: {e}")
@@ -467,15 +494,10 @@ class ModelFreeOrdinalFlow(BaseOrdinalFlowEstimator):
 # ----------------------------------------------------------------------
 
 def fit_ordered_sm_baseline(X, y, treatment_idx: int = 0, link: str = "probit"):
-    """
-    Fits a standard statsmodels OrderedModel and returns probability estimands.
-    """
     y0 = np.asarray(y, dtype=int) - 1
     X_np = np.asarray(X, dtype=float)
     cols = [f"x{k}" for k in range(X_np.shape[1])]
     dfX = pd.DataFrame(X_np, columns=cols)
-    
-    # Fit statsmodels OrderedModel
     mod = OrderedModel(y0, dfX, distr=link)
     res = mod.fit(method="bfgs", disp=False)
 
@@ -483,7 +505,6 @@ def fit_ordered_sm_baseline(X, y, treatment_idx: int = 0, link: str = "probit"):
         probs = np.asarray(res.model.predict(res.params, exog=pd.DataFrame(X_in, columns=cols)))
         return normalize_probs(probs)
 
-    # Compute counterfactuals
     X1, X0 = X_np.copy(), X_np.copy()
     X1[:, treatment_idx] = 1.0
     X0[:, treatment_idx] = 0.0
