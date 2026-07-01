@@ -25,6 +25,9 @@ from nflows.distributions.normal import StandardNormal
 from nflows.flows import Flow
 from statsmodels.miscmodels.ordinal_model import OrderedModel
 
+import warnings
+from statsmodels.tools.sm_exceptions import ConvergenceWarning, HessianInversionWarning
+
 torch.set_default_dtype(torch.float64)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SQRT2 = math.sqrt(2.0)
@@ -454,17 +457,22 @@ class StructuredOrdinalFlow(BaseOrdinalFlowEstimator):
         try:
             dfX = pd.DataFrame(X_t.cpu().numpy(), columns=[f"x{k}" for k in range(X_t.shape[1])])
             y0 = y_t.cpu().numpy().astype(int) - 1
-            mod = OrderedModel(y0, dfX, distr='probit').fit(method='bfgs', disp=False)
+            mod = OrderedModel(y0, dfX, distr='probit')
             
-            probit_beta = mod.params.values[:X_t.shape[1]]
-            thr_vals = mod.params.values[-(self.J - 1):]
+            # Cleanly suppress statsmodels warnings during warm-start initialization
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=ConvergenceWarning)
+                warnings.simplefilter("ignore", category=HessianInversionWarning)
+                res = mod.fit(method='bfgs', disp=False)
             
-            # Compute exact norm scale 's' of beta coefficients
+            probit_beta = res.params.values[:X_t.shape[1]]
+            thr_vals = res.params.values[-(self.J - 1):]
+            
+            # Compute exact norm scale 's'
             s = np.linalg.norm(probit_beta, ord=2)
             s = max(s, 1e-8)
             
             self.model.theta.data = torch.tensor(probit_beta, dtype=torch.float64, device=device)
-            
             self.model.a_raw.data = softplus_inv(torch.tensor(1.0 / s, dtype=torch.float64, device=device))
             self.model.b.data = torch.tensor(-thr_vals[0] / s, dtype=torch.float64, device=device)
             
@@ -498,8 +506,14 @@ def fit_ordered_sm_baseline(X, y, treatment_idx: int = 0, link: str = "probit"):
     X_np = np.asarray(X, dtype=float)
     cols = [f"x{k}" for k in range(X_np.shape[1])]
     dfX = pd.DataFrame(X_np, columns=cols)
+    
     mod = OrderedModel(y0, dfX, distr=link)
-    res = mod.fit(method="bfgs", disp=False)
+    
+    # Cleanly suppress non-fatal statsmodels warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=ConvergenceWarning)
+        warnings.simplefilter("ignore", category=HessianInversionWarning)
+        res = mod.fit(method="bfgs", disp=False)
 
     def predict_probs(X_in):
         probs = np.asarray(res.model.predict(res.params, exog=pd.DataFrame(X_in, columns=cols)))
