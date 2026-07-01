@@ -14,6 +14,7 @@ from typing import List
 
 import numpy as np
 import pandas as pd
+from pandas.errors import EmptyDataError
 
 REQUIRED_COLUMNS = {
     "setting",
@@ -36,12 +37,20 @@ def find_result_files(results_dir: str, pattern: str) -> List[str]:
 def read_results(files: List[str]) -> pd.DataFrame:
     frames = []
     for f in files:
-        df = pd.read_csv(f)
+        try:
+            df = pd.read_csv(f)
+        except EmptyDataError:
+            print(f"Warning: Skipping empty file {f}")
+            continue
+
         missing = REQUIRED_COLUMNS - set(df.columns)
         if missing:
             raise ValueError(f"{f} is missing columns: {sorted(missing)}")
         df["source_file"] = os.path.basename(f)
         frames.append(df)
+
+    if not frames:
+        raise ValueError("No valid data found in any of the provided files.")
 
     out = pd.concat(frames, ignore_index=True)
     out["n"] = out["n"].astype(int)
@@ -122,7 +131,6 @@ def print_quick_summary(summary: pd.DataFrame):
     """Prints a pivot table of RMSE and Bias for quick terminal inspection."""
     print("\n--- QUICK SUMMARY (RMSE) ---")
     try:
-        # Filter out latent_beta since it doesn't have a ground truth for RMSE
         sub = summary[summary["metric"] != "latent_beta"]
         rmse_pivot = sub.pivot_table(index=["setting", "n", "metric"], columns="model", values="rmse")
         print(rmse_pivot.round(4).to_string())
@@ -148,7 +156,6 @@ def main() -> None:
 
     raw = read_results(files)
     
-    # Check for duplicates before dropping to warn the user
     original_len = len(raw)
     raw = raw.drop_duplicates(subset=["setting", "n", "rep", "model", "metric", "index"], keep="last")
     if len(raw) < original_len:
@@ -164,7 +171,6 @@ def main() -> None:
 
     print(f"\nSaved summary to: {os.path.join(args.out_dir, 'mc_summary.csv')}")
     
-    # Print the table output
     print_quick_summary(summary)
 
 if __name__ == "__main__":
