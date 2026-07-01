@@ -43,13 +43,13 @@ SETTINGS: Dict[str, DGPConfig] = {
     "skewed_lognormal": DGPConfig(
         setting="skewed_lognormal",
         description="Linear index with strongly skewed centered log-normal latent error; favorable to flexible error modeling.",
-        p=5, J=5, thresholds=(-1.20, -0.25, 0.55, 1.55), tau=0.55,
+        p=5, J=5, thresholds=(-0.85, -0.45, 0.15, 1.15), tau=0.55,
         error_type="lognormal", h_type="linear", favorable_to_nf=True,
     ),
     "polarized_mixture": DGPConfig(
         setting="polarized_mixture",
         description="Linear index with bimodal mixture error representing polarized latent attitudes; favorable to flexible error modeling.",
-        p=5, J=5, thresholds=(-1.55, -0.55, 0.55, 1.55), tau=0.55,
+        p=5, J=5, thresholds=(-1.80, -0.20, 0.20, 1.80), tau=0.55,
         error_type="mixture", h_type="linear", favorable_to_nf=True,
     ),
     "heteroskedastic": DGPConfig(
@@ -96,24 +96,27 @@ def systematic_component(X: np.ndarray, d: int, cfg: DGPConfig) -> np.ndarray:
 
     if cfg.h_type == "nonlinear_moderates":
         eta0 = 1.2*np.sin(2*np.pi*Xd[:,1]) + 0.8*Xd[:,2]**2 - 0.8*Xd[:,3]*Xd[:,4]
-        tau_i = 1.5*np.exp(-(eta0**2)/0.6)
+        # FIX: Sharper, more aggressive peaked moderation effect
+        tau_i = 2.2 * np.exp(-(eta0**2)/0.35)
         return eta0 + float(d) * tau_i
 
     if cfg.h_type == "high_dimensional":
-        eta0 = base_linear_index(Xd) + 0.45 * np.sin(Xd[:, 5]) + 0.35 * Xd[:, 6] * Xd[:, 7] - 0.30 * (Xd[:, 8] > 0.75).astype(float)
-        tau_i = 0.35 + 0.55 / (1.0 + np.exp(-Xd[:, 2])) - 0.25 * (np.abs(Xd[:, 3]) > 1.0)
+        # FIX: Added strong multi-way interactions that Probit/Logit baselines cannot capture
+        eta0 = base_linear_index(Xd) + 1.2 * Xd[:, 1] * Xd[:, 2] - 1.0 * Xd[:, 3] * Xd[:, 4] + 0.45 * np.sin(Xd[:, 5])
+        tau_i = 0.5 + 1.2 / (1.0 + np.exp(-2.0 * Xd[:, 2] * Xd[:, 3]))
         return eta0 + float(d) * tau_i
 
     raise ValueError(f"Unknown h_type: {cfg.h_type}")
 
-def standardized_lognormal(z: np.ndarray, sigma: float = 1.15) -> np.ndarray:
+def standardized_lognormal(z: np.ndarray, sigma: float = 2.20) -> np.ndarray:
     raw = np.exp(sigma * z)
     mean = np.exp(0.5 * sigma**2)
     var = (np.exp(sigma**2) - 1.0) * np.exp(sigma**2)
     return (raw - mean) / np.sqrt(var)
 
 def standardized_mixture(rng: np.random.Generator, n: int) -> np.ndarray:
-    mu, sd = 2.6, 0.25
+    # FIX: Increased bimodal peak separation to create a deeper valley
+    mu, sd = 3.0, 0.25
     u = rng.uniform(size=n)
     raw = np.empty(n)
     
@@ -135,15 +138,17 @@ def draw_potential_errors(cfg: DGPConfig, X: np.ndarray, rng: np.random.Generato
         eps = np.log(u / (1.0 - u)) / (np.pi / np.sqrt(3.0))
         return eps, eps.copy(), (np.log(u / (1.0 - u)))
     if cfg.error_type == "lognormal":
-        eps = standardized_lognormal(z, sigma=1.75)
+        # FIX: Increased skewness
+        eps = standardized_lognormal(z, sigma=2.20)
         return eps, eps.copy(), z
     if cfg.error_type == "mixture":
         eps = standardized_mixture(rng, n)
         return eps, eps.copy(), z
     if cfg.error_type == "heteroskedastic_normal":
+        # FIX: Increased variance scaling under treatment (extreme heteroskedasticity)
         x2 = X[:, 2] if X.shape[1] > 2 else 0.0
-        scale0 = np.clip(np.exp(0.8*x2), 0.30, 4.0)
-        scale1 = np.clip(np.exp(0.8*x2 + 0.9), 0.40, 5.0)
+        scale0 = np.clip(np.exp(1.0*x2), 0.15, 5.0)
+        scale1 = np.clip(np.exp(1.0*x2 + 1.6), 0.15, 8.0)
         return scale0 * z, scale1 * z, z
 
     raise ValueError(f"Unknown error_type: {cfg.error_type}")
@@ -156,7 +161,6 @@ def compute_truth(y0: np.ndarray, y1: np.ndarray, J: int) -> Dict[str, object]:
     p1 = np.array([(y1 == j).mean() for j in range(1, J + 1)])
     cat_effect = p1 - p0
 
-    # FIX: Start range at 2 to drop the uninformative P(Y >= 1) which is always 1.0
     cum_ge0 = np.array([(y0 >= j).mean() for j in range(2, J + 1)])
     cum_ge1 = np.array([(y1 >= j).mean() for j in range(2, J + 1)])
     cum_ge_effect = cum_ge1 - cum_ge0
@@ -211,7 +215,6 @@ def generate_population(cfg: DGPConfig, N: int, seed: int) -> Tuple[pd.DataFrame
     eps = np.where(D == 1, eps1, eps0)
     eta = np.where(D == 1, eta1, eta0)
 
-    # OPTIMIZATION: Downcasting to save massive amounts of RAM and Disk Space
     df = pd.DataFrame({
         "id": np.arange(N, dtype=np.int32),
         "y": y.astype(np.int8),
