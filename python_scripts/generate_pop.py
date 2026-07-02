@@ -43,7 +43,7 @@ SETTINGS: Dict[str, DGPConfig] = {
     "skewed_lognormal": DGPConfig(
         setting="skewed_lognormal",
         description="Linear index with strongly skewed centered log-normal latent error; favorable to flexible error modeling.",
-        p=5, J=5, thresholds=(-0.85, -0.45, 0.15, 1.15), tau=0.55,
+        p=5, J=5, thresholds=(-0.04, 0.05, 0.50, 2.50), tau=0.55,  # <-- Adjusted thresholds
         error_type="lognormal", h_type="linear", favorable_to_nf=True,
     ),
     "polarized_mixture": DGPConfig(
@@ -96,12 +96,10 @@ def systematic_component(X: np.ndarray, d: int, cfg: DGPConfig) -> np.ndarray:
 
     if cfg.h_type == "nonlinear_moderates":
         eta0 = 1.2*np.sin(2*np.pi*Xd[:,1]) + 0.8*Xd[:,2]**2 - 0.8*Xd[:,3]*Xd[:,4]
-        # FIX: Sharper, more aggressive peaked moderation effect
         tau_i = 2.2 * np.exp(-(eta0**2)/0.35)
         return eta0 + float(d) * tau_i
 
     if cfg.h_type == "high_dimensional":
-        # FIX: Added strong multi-way interactions that Probit/Logit baselines cannot capture
         eta0 = base_linear_index(Xd) + 1.2 * Xd[:, 1] * Xd[:, 2] - 1.0 * Xd[:, 3] * Xd[:, 4] + 0.45 * np.sin(Xd[:, 5])
         tau_i = 0.5 + 1.2 / (1.0 + np.exp(-2.0 * Xd[:, 2] * Xd[:, 3]))
         return eta0 + float(d) * tau_i
@@ -115,7 +113,6 @@ def standardized_lognormal(z: np.ndarray, sigma: float = 2.20) -> np.ndarray:
     return (raw - mean) / np.sqrt(var)
 
 def standardized_mixture(rng: np.random.Generator, n: int) -> np.ndarray:
-    # FIX: Increased bimodal peak separation to create a deeper valley
     mu, sd = 3.0, 0.25
     u = rng.uniform(size=n)
     raw = np.empty(n)
@@ -138,14 +135,12 @@ def draw_potential_errors(cfg: DGPConfig, X: np.ndarray, rng: np.random.Generato
         eps = np.log(u / (1.0 - u)) / (np.pi / np.sqrt(3.0))
         return eps, eps.copy(), (np.log(u / (1.0 - u)))
     if cfg.error_type == "lognormal":
-        # FIX: Increased skewness
-        eps = standardized_lognormal(z, sigma=2.20)
+        eps = standardized_lognormal(z, sigma=3.00)
         return eps, eps.copy(), z
     if cfg.error_type == "mixture":
         eps = standardized_mixture(rng, n)
         return eps, eps.copy(), z
     if cfg.error_type == "heteroskedastic_normal":
-        # FIX: Increased variance scaling under treatment (extreme heteroskedasticity)
         x2 = X[:, 2] if X.shape[1] > 2 else 0.0
         scale0 = np.clip(np.exp(1.0*x2), 0.15, 5.0)
         scale1 = np.clip(np.exp(1.0*x2 + 1.6), 0.15, 8.0)
