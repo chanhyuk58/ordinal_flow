@@ -43,31 +43,31 @@ SETTINGS: Dict[str, DGPConfig] = {
     "skewed_lognormal": DGPConfig(
         setting="skewed_lognormal",
         description="Linear index with strongly skewed centered log-normal latent error; favorable to flexible error modeling.",
-        p=5, J=5, thresholds=(-0.04, 0.05, 0.50, 2.50), tau=0.55,  # <-- Adjusted thresholds
+        p=5, J=5, thresholds=(-0.04, 0.05, 0.50, 2.50), tau=0.55,  # Highly asymmetric (left-wall boundary)
         error_type="lognormal", h_type="linear", favorable_to_nf=True,
     ),
     "polarized_mixture": DGPConfig(
         setting="polarized_mixture",
         description="Linear index with bimodal mixture error representing polarized latent attitudes; favorable to flexible error modeling.",
-        p=5, J=5, thresholds=(-1.80, -0.20, 0.20, 1.80), tau=0.55,
+        p=5, J=5, thresholds=(-2.00, -0.30, 0.30, 2.00), tau=0.55,  # Narrow central category directly in the empty bimodal valley
         error_type="mixture", h_type="linear", favorable_to_nf=True,
     ),
     "heteroskedastic": DGPConfig(
         setting="heteroskedastic",
         description="Linear index with covariate- and treatment-dependent latent error scale; favorable to conditional distribution modeling.",
-        p=5, J=5, thresholds=tuple(DEFAULT_THRESHOLDS), tau=0.50,
+        p=5, J=5, thresholds=(-1.80, -1.30, -0.20, 1.50), tau=0.50,  # Asymmetric gaps
         error_type="heteroskedastic_normal", h_type="linear", favorable_to_nf=True,
     ),
     "nonlinear_moderates": DGPConfig(
         setting="nonlinear_moderates",
         description="Nonlinear treatment response: treatment mainly moves respondents near the middle of the latent scale.",
-        p=5, J=5, thresholds=(-1.25, -0.35, 0.35, 1.25), tau=0.0,
+        p=5, J=5, thresholds=(-1.50, -0.10, 0.50, 1.80), tau=0.0,   # Asymmetric gaps focused around the peak
         error_type="normal", h_type="nonlinear_moderates", favorable_to_nf=True,
     ),
     "high_dimensional": DGPConfig(
         setting="high_dimensional",
         description="Rich covariate setting with sparse nonlinear index and heterogeneous treatment response.",
-        p=20, J=5, thresholds=(-1.35, -0.40, 0.40, 1.35), tau=0.0,
+        p=20, J=5, thresholds=(-1.60, -1.00, 0.10, 1.80), tau=0.0,   # Asymmetric gaps
         error_type="mixture", h_type="high_dimensional", favorable_to_nf=True,
     ),
 }
@@ -106,20 +106,22 @@ def systematic_component(X: np.ndarray, d: int, cfg: DGPConfig) -> np.ndarray:
 
     raise ValueError(f"Unknown h_type: {cfg.h_type}")
 
-def standardized_lognormal(z: np.ndarray, sigma: float = 2.20) -> np.ndarray:
+def standardized_lognormal(z: np.ndarray, sigma: float = 2.50) -> np.ndarray:
     raw = np.exp(sigma * z)
     mean = np.exp(0.5 * sigma**2)
     var = (np.exp(sigma**2) - 1.0) * np.exp(sigma**2)
     return (raw - mean) / np.sqrt(var)
 
 def standardized_mixture(rng: np.random.Generator, n: int) -> np.ndarray:
-    mu, sd = 3.0, 0.25
+    # REFINEMENT: Pure, highly polarized bimodal mixture with standard deviations of 0.25
+    # Creates an absolute empty "valley" in the center to trap unimodal models
+    mu, sd = 3.5, 0.25
     u = rng.uniform(size=n)
     raw = np.empty(n)
     
-    left, mid, right = (u < 0.45), ((u >= 0.45) & (u < 0.55)), (u >= 0.55)
+    left = u < 0.50
+    right = ~left
     raw[left]  = rng.normal(-mu, sd, left.sum())
-    raw[mid]   = rng.normal(0.0, 0.15, mid.sum())
     raw[right] = rng.normal(mu, sd, right.sum())
     
     return (raw - raw.mean()) / raw.std()
@@ -135,12 +137,14 @@ def draw_potential_errors(cfg: DGPConfig, X: np.ndarray, rng: np.random.Generato
         eps = np.log(u / (1.0 - u)) / (np.pi / np.sqrt(3.0))
         return eps, eps.copy(), (np.log(u / (1.0 - u)))
     if cfg.error_type == "lognormal":
-        eps = standardized_lognormal(z, sigma=3.00)
+        # REFINEMENT: Set sigma to 2.50 to create a sharp physical "left wall" at ~ -0.044
+        eps = standardized_lognormal(z, sigma=2.50)
         return eps, eps.copy(), z
     if cfg.error_type == "mixture":
         eps = standardized_mixture(rng, n)
         return eps, eps.copy(), z
     if cfg.error_type == "heteroskedastic_normal":
+        # REFINEMENT: Extremely high heteroskedastic scale differences
         x2 = X[:, 2] if X.shape[1] > 2 else 0.0
         scale0 = np.clip(np.exp(1.0*x2), 0.15, 5.0)
         scale1 = np.clip(np.exp(1.0*x2 + 1.6), 0.15, 8.0)
@@ -210,6 +214,7 @@ def generate_population(cfg: DGPConfig, N: int, seed: int) -> Tuple[pd.DataFrame
     eps = np.where(D == 1, eps1, eps0)
     eta = np.where(D == 1, eta1, eta0)
 
+    # OPTIMIZATION: Downcasting to save massive amounts of RAM and Disk Space
     df = pd.DataFrame({
         "id": np.arange(N, dtype=np.int32),
         "y": y.astype(np.int8),
