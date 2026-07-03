@@ -1,5 +1,3 @@
-# ========================= Tomz2020.py =========================
-
 import os
 # Prevent OpenMP runtime crashes and thread contention
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -21,7 +19,7 @@ torch.set_default_dtype(torch.float64)
 # Load data
 # ============================================================
 
-tomz = pd.read_stata("./2012-10-01-Main-prepped.dta")
+tomz = pd.read_stata("../replication_data/2012-10-01-Main-prepped.dta")
 
 tomz["f_strike5"] = pd.factorize(tomz["strike5"], sort=True)[0] + 1
 tomz["hrtsdemoc"] = tomz["hrts"] * tomz["democ"]
