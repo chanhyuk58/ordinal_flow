@@ -115,10 +115,20 @@ if __name__ == "__main__":
     
     seeds = np.random.SeedSequence(12345).generate_state(B)
     
+    # 2. Parallel Bootstrap Loop
+    B = 100  # Number of Bootstrap replications
+    print(f"\nRunning B={B} Stratified Bootstraps in parallel...")
+    
+    # Auto-detects number of available CPU cores
+    max_workers = os.cpu_count()
+    print(f"Allocating work across {max_workers} CPU cores.")
+    
+    seeds = np.random.SeedSequence(12345).generate_state(B)
+    
     boot_results = []
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        # We submit jobs to the processor pool
-        futures = [executor.submit(run_one_bootstrap, b, seed) for b in range(B)]
+        # FIX: Iterate directly over the generated seeds
+        futures = [executor.submit(run_one_bootstrap, seed) for seed in seeds]
         for b, fut in enumerate(futures):
             boot_results.append(fut.result())
             if (b + 1) % 10 == 0:
