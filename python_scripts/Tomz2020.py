@@ -18,6 +18,8 @@ from ordinal_flow_core import (
 )
 
 torch.set_default_dtype(torch.float64)
+torch.set_num_threads(1)
+torch.set_num_interop_threads(1)
 
 # ============================================================
 # Load & Prepare Data
@@ -59,6 +61,7 @@ def run_one_bootstrap(seed):
     """Runs a single stratified bootstrap replication across all models."""
     rng = np.random.default_rng(seed)
     n = len(y)
+    torch.set_num_threads(1)
     
     # Stratified Resampling
     idx = np.empty(n, dtype=int)
