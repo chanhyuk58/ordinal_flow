@@ -55,7 +55,7 @@ def get_empirical_effects(y_arr, d_arr, num_classes):
 # ============================================================
 # Single Bootstrap Replication Task
 # ============================================================
-def run_one_bootstrap_rep(seed):
+def run_one_bootstrap_rep_rep(seed):
     """Runs a single stratified bootstrap replication across all models."""
     rng = np.random.default_rng(seed)
     n = len(y)
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     boot_results = []
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         # We submit jobs to the processor pool
-        futures = [executor.submit(run_one_bootstrap, b, seed) for b in range(B)]
+        futures = [executor.submit(run_one_bootstrap_rep, b, seed) for b in range(B)]
         for b, fut in enumerate(futures):
             boot_results.append(fut.result())
             if (b + 1) % 10 == 0:
