@@ -116,7 +116,7 @@ if __name__ == "__main__":
     seeds = np.random.SeedSequence(12345).generate_state(B)
     
     boot_results = []
-    with ProcessPoolExecutor(max_workers=max_plot) as executor:
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
         # We submit jobs to the processor pool
         futures = [executor.submit(run_one_bootstrap, b, seed) for b in range(B)]
         for b, fut in enumerate(futures):
