@@ -139,7 +139,13 @@ if __name__ == "__main__":
     # 2. Parallel Bootstrap Loop
     B = 100  # Number of Bootstrap replications
     print(f"\nRunning B={B} Stratified Bootstraps in parallel...")
-    max_workers = os.cpu_count()
+
+    max_workers = int(os.environ.get("LSB_DJOB_NUMPROC", 
+                     os.environ.get("SLURM_CPUS_PER_TASK", 
+                     os.cpu_count() or 4)))
+    
+    max_workers = min(max_workers, 32)
+    
     print(f"Allocating work across {max_workers} CPU cores.")
     
     seeds = np.random.SeedSequence(12345).generate_state(B)
