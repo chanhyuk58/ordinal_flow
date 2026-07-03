@@ -22,7 +22,7 @@ torch.set_default_dtype(torch.float64)
 # ============================================================
 # Load & Prepare Data
 # ============================================================
-tomz = pd.read_stata("./2012-10-01-Main-prepped.dta")
+tomz = pd.read_stata("../replication_data/2012-10-01-Main-prepped.dta")
 tomz["f_strike5"] = pd.factorize(tomz["strike5"], sort=True)[0] + 1
 
 y = tomz["f_strike5"].to_numpy(dtype=int)

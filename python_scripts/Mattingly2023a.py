@@ -20,7 +20,7 @@ torch.set_default_dtype(torch.float64)
 # ============================================================
 # Load & Prepare Data
 # ============================================================
-df = pd.read_csv("../data/Mattingly2023a.csv")
+df = pd.read_csv("../replication_data/Mattingly2023a.csv")
 
 # Recode variables
 df["f_political_model"] = pd.factorize(df["political_model"], sort=True)[0] + 1
