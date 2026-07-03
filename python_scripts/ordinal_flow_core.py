@@ -1,174 +1,527 @@
+from __future__ import annotations
+
 import os
 # Prevent OpenMP runtime crashes and thread contention
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-os.environ["OMP_NUM_THREADS"] = "1"  # Crucial for parallel bootstrapping
+
+import math
+from typing import Dict, Optional, Tuple, Any, List
 
 import numpy as np
 import pandas as pd
 import torch
-from concurrent.futures import ProcessPoolExecutor
-
-from ordinal_flow_core import (
-    device,
-    StructuredOrdinalFlow,
-    ModelFreeOrdinalFlow,
-    fit_ordered_sm_baseline,
+import torch.nn as nn
+import torch.optim as optim
+from torch.distributions import Normal
+from nflows.transforms.splines.rational_quadratic import (
+    unconstrained_rational_quadratic_spline as uRQS,
 )
+from nflows.transforms.autoregressive import (
+    MaskedPiecewiseRationalQuadraticAutoregressiveTransform,
+)
+from nflows.distributions.normal import StandardNormal
+from nflows.flows import Flow
+from statsmodels.miscmodels.ordinal_model import OrderedModel
+
+import warnings
+from statsmodels.tools.sm_exceptions import ConvergenceWarning, HessianInversionWarning
 
 torch.set_default_dtype(torch.float64)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+SQRT2 = math.sqrt(2.0)
+LOG_HALF = math.log(0.5)
 
-# ============================================================
-# Load & Prepare Data
-# ============================================================
-tomz = pd.read_stata("../data/2012-10-01-Main-prepped.dta")
-tomz["f_strike5"] = pd.factorize(tomz["strike5"], sort=True)[0] + 1
+# ----------------------------------------------------------------------
+# Numerical & Statistical Helpers
+# ----------------------------------------------------------------------
 
-y = tomz["f_strike5"].to_numpy(dtype=int)
-X = tomz[["hrts", "democ", "h1", "i1", "p1", "e1", "r1", "male", "white", "age", "ed4"]].to_numpy(dtype=float)
-Z = tomz[["h1", "i1", "p1", "e1", "r1", "male", "white", "age", "ed4"]].to_numpy(dtype=float)
-treat = X[:, 0].astype(int)
+def softplus_inv(y: torch.Tensor) -> torch.Tensor:
+    eps = 1e-12
+    y = torch.clamp(y, min=eps)
+    return torch.log(torch.expm1(y))
 
-J = len(np.unique(y))
-treatment_idx = 0
+def log_ndtr(z: torch.Tensor) -> torch.Tensor:
+    return LOG_HALF + torch.log(torch.special.erfc(-z / SQRT2) + 1e-12)
 
-# ============================================================
-# Helper: Empirical Estimator
-# ============================================================
-def get_empirical_effects(y_arr, d_arr, num_classes):
-    p = {}
-    for val in [0, 1]:
-        mask = (d_arr == val)
-        p[val] = np.array([(y_arr[mask] == j).mean() for j in range(1, num_classes + 1)], dtype=float)
+def log_surv_ndtr(z: torch.Tensor) -> torch.Tensor:
+    return LOG_HALF + torch.log(torch.special.erfc(z / SQRT2) + 1e-12)
 
-    cat_eff = p[1] - p[0]
-    cge_eff = (np.cumsum(p[1][::-1])[::-1] - np.cumsum(p[0][::-1])[::-1])[1:]  # Drop P(Y >= 1)
-    wass = np.sum(np.abs(np.cumsum(p[1])[:-1] - np.cumsum(p[0])[:-1]))
+def log_diff_normal_cdfs(zl: torch.Tensor, zu: torch.Tensor) -> torch.Tensor:
+    assert zl.shape == zu.shape
+    left_mask = (zu <= 0) & (zl <= 0)
+    right_mask = (zu >= 0) & (zl >= 0)
+    mid_mask = ~(left_mask | right_mask)
+    out = torch.empty_like(zu)
 
+    if left_mask.any():
+        a = log_ndtr(zu[left_mask])
+        b = log_ndtr(zl[left_mask])
+        out[left_mask] = a + torch.log1p(-torch.exp(b - a) + 1e-12)
+
+    if right_mask.any():
+        a = log_surv_ndtr(zl[right_mask])
+        b = log_surv_ndtr(zu[right_mask])
+        out[right_mask] = a + torch.log1p(-torch.exp(b - a) + 1e-12)
+
+    if mid_mask.any():
+        phi_u = Normal(0.0, 1.0).cdf(zu[mid_mask])
+        phi_l = Normal(0.0, 1.0).cdf(zl[mid_mask])
+        diff = torch.clamp(phi_u - phi_l, min=1e-12)
+        out[mid_mask] = torch.log(diff)
+    return out
+
+def normalize_probs(p: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    p = np.asarray(p, dtype=float)
+    p = np.clip(p, eps, 1.0)
+    return p / p.sum(axis=1, keepdims=True)
+
+# ----------------------------------------------------------------------
+# Probability Estimands
+# ----------------------------------------------------------------------
+
+def category_effect_from_probs(p1: np.ndarray, p0: np.ndarray) -> np.ndarray:
+    return np.mean(normalize_probs(p1) - normalize_probs(p0), axis=0)
+
+def cumulative_ge_from_probs(p: np.ndarray) -> np.ndarray:
+    p = normalize_probs(p)
+    return np.cumsum(p[:, ::-1], axis=1)[:, ::-1]
+
+def cumulative_ge_effect_from_probs(p1: np.ndarray, p0: np.ndarray) -> np.ndarray:
+    return np.mean(cumulative_ge_from_probs(p1) - cumulative_ge_from_probs(p0), axis=0)[1:]
+
+def wasserstein_unit_from_probs(p1: np.ndarray, p0: np.ndarray) -> float:
+    p1_bar = normalize_probs(p1).mean(axis=0)
+    p0_bar = normalize_probs(p0).mean(axis=0)
+    cdf1 = np.cumsum(p1_bar)
+    cdf0 = np.cumsum(p0_bar)
+    return float(np.sum(np.abs(cdf1[:-1] - cdf0[:-1])))
+
+def effects_from_counterfactual_probs(p1: np.ndarray, p0: np.ndarray) -> Dict[str, object]:
+    p1, p0 = normalize_probs(p1), normalize_probs(p0)
     return {
-        "wasserstein_unit": wass,
-        "category_effect": cat_eff,
-        "cum_ge_effect": cge_eff,
+        "category_effect": category_effect_from_probs(p1, p0),
+        "cum_ge_effect": cumulative_ge_effect_from_probs(p1, p0),
+        "wasserstein_unit": wasserstein_unit_from_probs(p1, p0),
     }
 
-# ============================================================
-# Single Bootstrap Replication Task
-# ============================================================
-def run_one_bootstrap_rep(seed):
-    """Runs a single stratified bootstrap replication across all models."""
-    rng = np.random.default_rng(seed)
-    n = len(y)
-    
-    # Stratified Resampling
-    idx = np.empty(n, dtype=int)
-    for c in np.unique(y):
-        c_indices = np.where(y == c)[0]
-        idx[y == c] = rng.choice(c_indices, size=len(c_indices), replace=True)
+# ----------------------------------------------------------------------
+# Core Neural Network Modules
+# ----------------------------------------------------------------------
+
+class GlobalRQS1D(nn.Module):
+    def __init__(self, K=16, bounds=8.0, min_bin_width=1e-3, min_bin_height=1e-3, min_derivative=1e-3):
+        super().__init__()
+        self.K = K
+        self.bound = float(bounds)
+        self.min_bin_width, self.min_bin_height, self.min_derivative = min_bin_width, min_bin_height, min_derivative
+        self.unnorm_widths = nn.Parameter(torch.zeros(K))
+        self.unnorm_heights = nn.Parameter(torch.zeros(K))
+        self.unnorm_derivs = nn.Parameter(torch.full((K + 1,), softplus_inv(torch.tensor(1.0))))
+
+    def _expand_params(self, batch_size):
+        return (
+            self.unnorm_widths.view(1, 1, -1).expand(batch_size, 1, self.K),
+            self.unnorm_heights.view(1, 1, -1).expand(batch_size, 1, self.K),
+            self.unnorm_derivs.view(1, 1, -1).expand(batch_size, 1, self.K + 1)
+        )
+
+    def inverse(self, e):
+        e_in = e.unsqueeze(-1) if e.dim() == 1 else e
+        w, h, d = self._expand_params(e_in.shape[0])
+        z, _ = uRQS(
+            inputs=e_in, unnormalized_widths=w, unnormalized_heights=h, unnormalized_derivatives=d,
+            inverse=True, tails='linear', tail_bound=self.bound,
+            min_bin_width=self.min_bin_width, min_bin_height=self.min_bin_height, min_derivative=self.min_derivative,
+        )
+        return z.squeeze(-1)
+
+
+class OrderedFlowModel(nn.Module):
+    def __init__(self, p, J, q=0, flow_bins=16, bounds=8.0, min_gap=1e-4):
+        super().__init__()
+        self.p, self.q, self.J, self.min_gap = p, q, J, min_gap
         
-    Xb, yb, Zb = X[idx], y[idx], Z[idx]
-    
-    # 1. Empirical
-    emp_b = get_empirical_effects(yb, Xb[:, 0].astype(int), J)
-    
-    # 2. Ordered Probit & Logit
-    op_b, _ = fit_ordered_sm_baseline(Xb, yb, treatment_idx=treatment_idx, link="probit")
-    ol_b, _ = fit_ordered_sm_baseline(Xb, yb, treatment_idx=treatment_idx, link="logit")
-    
-    # 3. Structured Flow (Warm started)
-    sf_model = StructuredOrdinalFlow(J=J, q=Zb.shape[1], flow_bins=16, bounds=10.0)
-    sf_model.fit(Xb, yb, Z=Zb, epochs=30, lr=5e-3, use_lbfgs=True, verbose=False)
-    sf_b = sf_model.compute_effects(Xb, treatment_idx=treatment_idx, Z=Zb)
-    
-    # 4. Model-Free Flow (Warm started)
-    mf_model = ModelFreeOrdinalFlow(J=J, flow_bins=16, bounds=10.0)
-    mf_model.fit(Xb, yb, epochs=30, lr=1e-2, use_lbfgs=True, verbose=False)
-    mf_b = mf_model.compute_effects(Xb, treatment_idx=treatment_idx)
-    
-    return emp_b, op_b, ol_b, sf_b, mf_b
-
-# ============================================================
-# Main Execution Block
-# ============================================================
-if __name__ == "__main__":
-    # 1. Compute Main Estimates
-    print("Computing main point estimates...")
-    empirical_est = get_empirical_effects(y, treat, J)
-    oprobit_est, _ = fit_ordered_sm_baseline(X, y, treatment_idx=treatment_idx, link="probit")
-    ologit_est, _ = fit_ordered_sm_baseline(X, y, treatment_idx=treatment_idx, link="logit")
-    
-    sf_model = StructuredOrdinalFlow(J=J, q=Z.shape[1], flow_bins=16, bounds=10.0)
-    sf_model.fit(X, y, Z=Z, epochs=200, lr=5e-3, use_lbfgs=True, verbose=False)
-    structured_est = sf_model.compute_effects(X, treatment_idx=treatment_idx, Z=Z)
-    
-    mf_model = ModelFreeOrdinalFlow(J=J, flow_bins=16, bounds=10.0)
-    mf_model.fit(X, y, epochs=200, lr=1e-2, use_lbfgs=True, verbose=False)
-    model_free_est = mf_model.compute_effects(X, treatment_idx=treatment_idx)
-
-    # 2. Parallel Bootstrap Loop
-    B = 100  # Number of Bootstrap replications
-    print(f"\nRunning B={B} Stratified Bootstraps in parallel...")
-    
-    # Auto-detects number of available CPU cores
-    max_workers = os.cpu_count()
-    print(f"Allocating work across {max_workers} CPU cores.")
-    
-    seeds = np.random.SeedSequence(12345).generate_state(B)
-    
-    boot_results = []
-    with ProcessPoolExecutor(max_workers=max_plot) as executor:
-        # We submit jobs to the processor pool
-        futures = [executor.submit(run_one_bootstrap, b, seed) for b in range(B)]
-        for b, fut in enumerate(futures):
-            boot_results.append(fut.result())
-            if (b + 1) % 10 == 0:
-                print(f"  Completed {b + 1}/{B} replications")
-
-    # 3. Process Bootstrap standard errors
-    model_names = ["empirical", "oprobit", "ologit", "structured flow", "model_free flow"]
-    estimates = [empirical_est, oprobit_est, ologit_est, structured_est, model_free_est]
-    
-    # Reshape bootstrap draws to calculate standard deviations
-    boot_draws = {name: {"category_effect": [], "cum_ge_effect": [], "wasserstein_unit": []} for name in model_names}
-    for rep in boot_results:
-        for m_idx, name in enumerate(model_names):
-            boot_draws[name]["category_effect"].append(rep[m_idx]["category_effect"])
-            boot_draws[name]["cum_ge_effect"].append(rep[m_idx]["cum_ge_effect"])
-            boot_draws[name]["wasserstein_unit"].append(rep[m_idx]["wasserstein_unit"])
-
-    # Calculate standard deviation of standard bootstrap distribution
-    ses = {}
-    for name in model_names:
-        ses[name] = {
-            "category_effect": np.std(boot_draws[name]["category_effect"], axis=0, ddof=1),
-            "cum_ge_effect": np.std(boot_draws[name]["cum_ge_effect"], axis=0, ddof=1),
-            "wasserstein_unit": np.std(boot_draws[name]["wasserstein_unit"], axis=0, ddof=1),
-        }
-
-    # 4. Save results to a clean CSV for R
-    rows = []
-    for m_idx, name in enumerate(model_names):
-        est_obj = estimates[m_idx]
-        se_obj = ses[name]
+        self.theta = nn.Parameter(torch.ones(p))
         
-        # Wasserstein Scalar
-        rows.append({
-            "model": name, "metric": "wasserstein_unit", "index": 1,
-            "estimate": est_obj["wasserstein_unit"], "se": se_obj["wasserstein_unit"]
-        })
+        self.alpha1_intercept = nn.Parameter(torch.tensor(0.0), requires_grad=False)
+        self.alpha1_gamma = nn.Parameter(torch.zeros(q)) if q > 0 else None
+
+        if self.J > 2:
+            self.gap_intercepts_raw = nn.Parameter(torch.full((self.J - 2,), softplus_inv(torch.tensor(0.5))))
+            self.gap_gammas = nn.Parameter(torch.zeros(self.J - 2, q)) if q > 0 else None
+        else:
+            self.register_parameter('gap_intercepts_raw', None)
+            self.register_parameter('gap_gammas', None)
+
+        self.a_raw = nn.Parameter(softplus_inv(torch.tensor(1.0)), requires_grad=True)
+        self.b = nn.Parameter(torch.tensor(0.0), requires_grad=True)
+        self.flow = GlobalRQS1D(K=flow_bins, bounds=bounds)
+
+    @property
+    def beta(self) -> torch.Tensor:
+        # Analytically guarantee unit L2 norm during training
+        eps = 1e-12
+        norm = torch.norm(self.theta, p=2)
+        return self.theta / torch.clamp(norm, min=eps)
+
+    def alphas_obs(self, Z=None):
+        n = 1 if Z is None else Z.shape[0]
+        alpha1 = self.alpha1_intercept.expand(n) if self.q == 0 or Z is None else self.alpha1_intercept + Z.matmul(self.alpha1_gamma)
+        if self.J == 2: return alpha1.unsqueeze(1)
+
+        alphas = torch.empty(n, self.J - 1, dtype=alpha1.dtype, device=alpha1.device)
+        alphas[:, 0] = alpha1
         
-        # Category Effects Vector
-        for j in range(J):
-            rows.append({
-                "model": name, "metric": "category_effect", "index": j + 1,
-                "estimate": est_obj["category_effect"][j], "se": se_obj["category_effect"][j]
-            })
+        gaps_raw = self.gap_intercepts_raw.unsqueeze(0) if self.q == 0 or Z is None else self.gap_intercepts_raw.unsqueeze(0) + Z.matmul(self.gap_gammas.T)
+        gaps = torch.nn.functional.softplus(gaps_raw) + self.min_gap
+        
+        for k in range(1, self.J - 1):
+            alphas[:, k] = alphas[:, k-1] + gaps[:, k-1] if gaps.dim() > 1 else alphas[:, k-1] + gaps[k-1]
+        return alphas
+
+    def _get_z_bounds(self, X, Z=None):
+        eta = X.matmul(self.beta)
+        alphas = self.alphas_obs(Z)
+        B = torch.empty(X.shape[0], self.J + 1, dtype=X.dtype, device=X.device)
+        B[:, 0], B[:, -1] = -torch.inf, torch.inf
+        B[:, 1:-1] = alphas
+        
+        E = B - eta.unsqueeze(1)
+        E_flat = E.reshape(-1)
+        Z_flat = torch.empty_like(E_flat)
+        Z_flat[E_flat == -torch.inf] = -torch.inf
+        Z_flat[E_flat == torch.inf] = torch.inf
+        
+        finite_mask = torch.isfinite(E_flat)
+        if finite_mask.any():
+            # Apply learnable location (b) and scale (a) to the threshold difference
+            a = torch.nn.functional.softplus(self.a_raw)
+            Z_flat[finite_mask] = self.flow.inverse((E_flat[finite_mask] - self.b) / a)
             
-        # Cumulative GE Effects Vector (from index 2)
-        for j in range(J - 1):
-            rows.append({
-                "model": name, "metric": "cum_ge_effect", "index": j + 2,
-                "estimate": est_obj["cum_ge_effect"][j], "se": se_obj["cum_ge_effect"][j]
-            })
+        return Z_flat.reshape(X.shape[0], self.J + 1)
 
-    df_out = pd.DataFrame(rows)
-    df_out.to_csv("tomz_results.csv", index=False)
-    print("\nSaved standard errors and estimates to: tomz_results.csv")
+    def predict_proba(self, X, Z=None):
+        z = self._get_z_bounds(X, Z)
+        cdf_u = torch.full_like(z, torch.nan)
+        cdf_u[torch.isneginf(z)], cdf_u[torch.isposinf(z)] = 0.0, 1.0
+        finite_z = torch.isfinite(z)
+        if finite_z.any():
+            cdf_u[finite_z] = Normal(0.0, 1.0).cdf(z[finite_z])
+        probs = cdf_u[:, 1:] - cdf_u[:, :-1]
+        return torch.clamp(probs, min=1e-12, max=1.0)
+
+    def neg_loglik(self, X, y, Z=None):
+        z = self._get_z_bounds(X, Z)
+        y_idx = (y.long() - 1).view(-1, 1)
+        zl = z.gather(1, y_idx).squeeze(1)
+        zu = z.gather(1, y_idx + 1).squeeze(1)
+        return -torch.mean(log_diff_normal_cdfs(zl, zu))
+
+
+class ModelFreeConditionalFlowModel(nn.Module):
+    def __init__(self, p, J, flow_bins=16, bounds=8.0, min_gap=1e-4, hidden_features=32):
+        super().__init__()
+        self.p, self.J, self.min_gap = p, J, min_gap
+        
+        transform = MaskedPiecewiseRationalQuadraticAutoregressiveTransform(
+            features=1, hidden_features=hidden_features, context_features=p,
+            num_bins=flow_bins, tail_bound=bounds, tails='linear'
+        )
+        self.flow = Flow(transform=transform, distribution=StandardNormal(shape=[1]))
+        self.alpha1_intercept = nn.Parameter(torch.tensor(0.0))
+        self.gap_intercepts_raw = nn.Parameter(torch.full((self.J - 2,), softplus_inv(torch.tensor(0.5)))) if J > 2 else None
+
+    def _get_z_bounds(self, X):
+        n = X.shape[0]
+        alpha1 = self.alpha1_intercept.expand(n)
+        B = torch.empty(n, self.J + 1, dtype=X.dtype, device=X.device)
+        B[:, 0], B[:, -1] = -torch.inf, torch.inf
+        B[:, 1] = alpha1
+        
+        if self.J > 2:
+            gaps = torch.nn.functional.softplus(self.gap_intercepts_raw) + self.min_gap
+            for k in range(2, self.J):
+                B[:, k] = B[:, k-1] + gaps[k-2]
+
+        B_flat = B.reshape(-1, 1)
+        X_expanded = X.unsqueeze(1).expand(-1, self.J + 1, -1).reshape(-1, self.p)
+        
+        z_flat = torch.full_like(B_flat, torch.nan)
+        z_flat[B_flat == -torch.inf] = -torch.inf
+        z_flat[B_flat == torch.inf] = torch.inf
+        
+        finite_mask = torch.isfinite(B_flat).squeeze(1)
+        if finite_mask.any():
+            z_finite, _ = self.flow._transform.forward(B_flat[finite_mask], context=X_expanded[finite_mask])
+            z_flat[finite_mask, :] = z_finite
+            
+        return z_flat.reshape(n, self.J + 1)
+
+    def predict_proba(self, X):
+        z = self._get_z_bounds(X)
+        cdf_u = torch.full_like(z, torch.nan)
+        cdf_u[torch.isneginf(z)], cdf_u[torch.isposinf(z)] = 0.0, 1.0
+        finite_z = torch.isfinite(z)
+        if finite_z.any():
+            cdf_u[finite_z] = Normal(0.0, 1.0).cdf(z[finite_z])
+        probs = cdf_u[:, 1:] - cdf_u[:, :-1]
+        return torch.clamp(probs, min=1e-12, max=1.0)
+
+    def neg_loglik(self, X, y):
+        z = self._get_z_bounds(X)
+        y_idx = (y.long() - 1).view(-1, 1)
+        zl = z.gather(1, y_idx).squeeze(1)
+        zu = z.gather(1, y_idx + 1).squeeze(1)
+        return -torch.mean(log_diff_normal_cdfs(zl, zu))
+
+
+# ----------------------------------------------------------------------
+# Standardized Training Routine
+# ----------------------------------------------------------------------
+
+def train_flow_model(
+    model: nn.Module, X: torch.Tensor, y: torch.Tensor, Z: Optional[torch.Tensor] = None,
+    epochs: int = 300, lr: float = 5e-3, use_lbfgs: bool = True,
+    patience: int = 15, delta_eps: float = 1e-4, verbose: bool = False
+) -> Dict[str, Any]:
+    
+    # 1. Warm start: Freeze flow parameters initially
+    for name, param in model.named_parameters():
+        if "flow" in name: param.requires_grad = False
+
+    best_nll = float('inf')
+    best_state = None
+    neg_streak = 0
+    history = {'train_nll': []}
+
+    opt_adam = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+    
+    for ep in range(1, epochs + 1):
+        if ep == 21:
+            for name, param in model.named_parameters():
+                if "flow" in name: param.requires_grad = True
+            
+            flow_params = [p for n, p in model.named_parameters() if "flow" in n]
+            non_flow_params = [p for n, p in model.named_parameters() if "flow" not in n and p.requires_grad]
+            
+            opt_adam = optim.Adam([
+                {"params": flow_params, "lr": lr * 0.1},
+                {"params": non_flow_params, "lr": lr}
+            ])
+        
+        opt_adam.zero_grad()
+        loss = model.neg_loglik(X, y, Z) if Z is not None else model.neg_loglik(X, y)
+        if torch.isnan(loss): break
+        
+        loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        opt_adam.step()
+        
+        cur_nll = float(loss.detach())
+        history['train_nll'].append(cur_nll)
+
+        if cur_nll < best_nll - delta_eps:
+            best_nll = cur_nll
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            neg_streak = 0
+        else:
+            neg_streak += 1
+
+        if ep > 30 and neg_streak >= patience:
+            if verbose: print(f"Adam early stopping at epoch {ep}")
+            break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+
+    if use_lbfgs:
+        opt_lbfgs = optim.LBFGS(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=0.5, max_iter=20, history_size=20, line_search_fn="strong_wolfe"
+        )
+        def closure():
+            opt_lbfgs.zero_grad()
+            loss = model.neg_loglik(X, y, Z) if Z is not None else model.neg_loglik(X, y)
+            if torch.isnan(loss): return loss
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            return loss
+
+        for _ in range(15):
+            try:
+                loss = opt_lbfgs.step(closure)
+                cur_nll = float(loss.detach())
+                history['train_nll'].append(cur_nll)
+                if cur_nll < best_nll - delta_eps:
+                    best_nll = cur_nll
+                    best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+                if torch.isnan(loss): break
+            except Exception:
+                break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+        
+    return history
+
+# ----------------------------------------------------------------------
+# Estimator API / Wrappers
+# ----------------------------------------------------------------------
+
+class BaseOrdinalFlowEstimator:
+    def __init__(self, **kwargs):
+        self.model = None
+        self.history = None
+        self.config = kwargs
+
+    def _prepare_data(self, X, y=None, Z=None):
+        X_t = torch.as_tensor(X, dtype=torch.float64, device=device)
+        y_t = torch.as_tensor(y, dtype=torch.float64, device=device) if y is not None else None
+        Z_t = torch.as_tensor(Z, dtype=torch.float64, device=device) if Z is not None else None
+        return X_t, y_t, Z_t
+
+    def predict_proba(self, X, Z=None) -> np.ndarray:
+        self.model.eval()
+        X_t, _, Z_t = self._prepare_data(X, Z=Z)
+        with torch.no_grad():
+            probs = self.model.predict_proba(X_t, Z_t) if Z_t is not None else self.model.predict_proba(X_t)
+        return probs.cpu().numpy()
+
+    def counterfactual_probs(self, X, treatment_idx: int, Z=None):
+        X_t, _, Z_t = self._prepare_data(X, Z=Z)
+        X1, X0 = X_t.clone(), X_t.clone()
+        X1[:, treatment_idx] = 1.0
+        X0[:, treatment_idx] = 0.0
+        
+        self.model.eval()
+        with torch.no_grad():
+            p1 = self.model.predict_proba(X1, Z_t) if Z_t is not None else self.model.predict_proba(X1)
+            p0 = self.model.predict_proba(X0, Z_t) if Z_t is not None else self.model.predict_proba(X0)
+        return p1.cpu().numpy(), p0.cpu().numpy()
+
+    def compute_effects(self, X, treatment_idx: int, Z=None) -> Dict[str, object]:
+        p1, p0 = self.counterfactual_probs(X, treatment_idx, Z)
+        return effects_from_counterfactual_probs(p1, p0)
+
+    def bootstrap_effects(self, X, y, treatment_idx: int, Z=None, B: int = 100) -> pd.DataFrame:
+        if self.model is None:
+            raise ValueError("Model must be fit on full data before bootstrapping.")
+        
+        X_t, y_t, Z_t = self._prepare_data(X, y, Z)
+        n = len(X_t)
+        results = []
+
+        print(f"Starting {B} bootstrap iterations for effects...")
+        for b in range(B):
+            idx = torch.empty(n, dtype=torch.long, device=device)
+            for c in torch.unique(y_t):
+                c_mask = (y_t == c)
+                c_indices = torch.where(c_mask)[0]
+                idx[c_mask] = c_indices[torch.randint(0, len(c_indices), (len(c_indices),), device=device)]
+                
+            Xb, yb = X_t[idx], y_t[idx]
+            Zb = Z_t[idx] if Z_t is not None else None
+            
+            estimator = self.__class__(**self.config)
+            
+            if isinstance(self, StructuredOrdinalFlow):
+                estimator.model = OrderedFlowModel(p=X_t.shape[1], J=self.J, q=self.q, flow_bins=self.flow_bins, bounds=self.bounds, min_gap=self.min_gap).to(device)
+            else:
+                estimator.model = ModelFreeConditionalFlowModel(p=X_t.shape[1], J=self.J, flow_bins=self.flow_bins, bounds=self.bounds, hidden_features=self.hidden_features).to(device)
+            
+            estimator.model.load_state_dict(self.model.state_dict())
+            
+            train_flow_model(estimator.model, Xb, yb, Z=Zb, epochs=30, lr=1e-3, use_lbfgs=True, verbose=False)
+            
+            eff = estimator.compute_effects(X_t, treatment_idx, Z=Z_t)
+            
+            flat_eff = {"wasserstein_unit": eff["wasserstein_unit"]}
+            for i, val in enumerate(eff["category_effect"]): flat_eff[f"AME_cat_{i+1}"] = val
+            for i, val in enumerate(eff["cum_ge_effect"]): flat_eff[f"CGE_cat_{i+2}"] = val
+            results.append(flat_eff)
+            
+        return pd.DataFrame(results).std()
+
+
+class StructuredOrdinalFlow(BaseOrdinalFlowEstimator):
+    def __init__(self, J: int, q: int = 0, flow_bins: int = 16, bounds: float = 10.0, min_gap: float = 1e-4):
+        super().__init__(J=J, q=q, flow_bins=flow_bins, bounds=bounds, min_gap=min_gap)
+        self.J, self.q, self.flow_bins, self.bounds, self.min_gap = J, q, flow_bins, bounds, min_gap
+
+    def fit(self, X, y, Z=None, epochs=300, lr=5e-3, use_lbfgs=True, verbose=False):
+        X_t, y_t, Z_t = self._prepare_data(X, y, Z)
+        self.model = OrderedFlowModel(p=X_t.shape[1], J=self.J, q=self.q, flow_bins=self.flow_bins, bounds=self.bounds, min_gap=self.min_gap).to(device)
+        
+        try:
+            dfX = pd.DataFrame(X_t.cpu().numpy(), columns=[f"x{k}" for k in range(X_t.shape[1])])
+            y0 = y_t.cpu().numpy().astype(int) - 1
+            mod = OrderedModel(y0, dfX, distr='probit')
+            
+            # Cleanly suppress statsmodels warnings during warm-start initialization
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=ConvergenceWarning)
+                warnings.simplefilter("ignore", category=HessianInversionWarning)
+                res = mod.fit(method='bfgs', disp=False)
+            
+            probit_beta = res.params.values[:X_t.shape[1]]
+            thr_vals = res.params.values[-(self.J - 1):]
+            
+            # Compute exact norm scale 's'
+            s = np.linalg.norm(probit_beta, ord=2)
+            s = max(s, 1e-8)
+            
+            self.model.theta.data = torch.tensor(probit_beta, dtype=torch.float64, device=device)
+            self.model.a_raw.data = softplus_inv(torch.tensor(1.0 / s, dtype=torch.float64, device=device))
+            self.model.b.data = torch.tensor(-thr_vals[0] / s, dtype=torch.float64, device=device)
+            
+            if self.J > 2:
+                gaps = np.diff(thr_vals) / s
+                gaps = np.maximum(gaps, self.min_gap * 10)
+                self.model.gap_intercepts_raw.data = softplus_inv(torch.tensor(gaps - self.min_gap, dtype=torch.float64, device=device))
+        except Exception as e:
+            if verbose: print(f"Probit init skipped: {e}")
+
+        self.history = train_flow_model(self.model, X_t, y_t, Z=Z_t, epochs=epochs, lr=lr, use_lbfgs=use_lbfgs, verbose=verbose)
+        return self
+
+class ModelFreeOrdinalFlow(BaseOrdinalFlowEstimator):
+    def __init__(self, J: int, flow_bins: int = 16, bounds: float = 10.0, hidden_features: int = 32):
+        super().__init__(J=J, flow_bins=flow_bins, bounds=bounds, hidden_features=hidden_features)
+        self.J, self.flow_bins, self.bounds, self.hidden_features = J, flow_bins, bounds, hidden_features
+
+    def fit(self, X, y, epochs=500, lr=1e-2, use_lbfgs=True, verbose=False):
+        X_t, y_t, _ = self._prepare_data(X, y)
+        self.model = ModelFreeConditionalFlowModel(p=X_t.shape[1], J=self.J, flow_bins=self.flow_bins, bounds=self.bounds, hidden_features=self.hidden_features).to(device)
+        self.history = train_flow_model(self.model, X_t, y_t, Z=None, epochs=epochs, lr=lr, use_lbfgs=use_lbfgs, verbose=verbose)
+        return self
+
+# ----------------------------------------------------------------------
+# Standard Statsmodels Baseline Fits
+# ----------------------------------------------------------------------
+
+def fit_ordered_sm_baseline(X, y, treatment_idx: int = 0, link: str = "probit"):
+    y0 = np.asarray(y, dtype=int) - 1
+    X_np = np.asarray(X, dtype=float)
+    cols = [f"x{k}" for k in range(X_np.shape[1])]
+    dfX = pd.DataFrame(X_np, columns=cols)
+    
+    mod = OrderedModel(y0, dfX, distr=link)
+    
+    # Cleanly suppress non-fatal statsmodels warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=ConvergenceWarning)
+        warnings.simplefilter("ignore", category=HessianInversionWarning)
+        res = mod.fit(method="bfgs", disp=False)
+
+    def predict_probs(X_in):
+        probs = np.asarray(res.model.predict(res.params, exog=pd.DataFrame(X_in, columns=cols)))
+        return normalize_probs(probs)
+
+    X1, X0 = X_np.copy(), X_np.copy()
+    X1[:, treatment_idx] = 1.0
+    X0[:, treatment_idx] = 0.0
+    
+    p1, p0 = predict_probs(X1), predict_probs(X0)
+    effects = effects_from_counterfactual_probs(p1, p0)
+    
+    return effects, res
