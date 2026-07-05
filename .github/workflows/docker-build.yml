@@ -41,7 +41,7 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ghcr.io/chanhyuk58/ordinal_outcome:latest
-            ghcr.io/chanhyuk58/ordinal_outcome:${{ github.sha }}
+            ghcr.io/chanhyuk58/ordinal_flow:latest
+            ghcr.io/chanhyuk58/ordinal_flow:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
