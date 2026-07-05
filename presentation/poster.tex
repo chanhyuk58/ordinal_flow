@@ -1,0 +1,448 @@
+\documentclass[final]{beamer}
+
+% 42 in x 36 in landscape poster. beamerposter expects custom dimensions in cm.
+\usepackage[size=custom,width=102,height=68,scale=0.95]{beamerposter}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,fit,shapes.geometric}
+\usepackage{graphicx}
+\usepackage{ragged2e}
+\usepackage{url}
+\usepackage{hyperref}
+\doublespacing
+
+% -------------------------------------------------------------------------
+% Colors
+% -------------------------------------------------------------------------
+\definecolor{WashURed}{HTML}{BA0C2F}
+\definecolor{WashUGreen}{HTML}{215732}
+\definecolor{PosterDark}{HTML}{222222}
+\definecolor{PosterGray}{HTML}{5C5C5C}
+\definecolor{PosterLight}{HTML}{F7F7F7}
+\definecolor{PosterPaleGreen}{HTML}{EAF2EC}
+\definecolor{PosterPaleRed}{HTML}{F8E9ED}
+
+\setbeamercolor{headline}{fg=white,bg=WashURed}
+\setbeamercolor{title in headline}{fg=white}
+\setbeamercolor{author in headline}{fg=white}
+\setbeamercolor{institute in headline}{fg=white}
+\setbeamercolor{block title}{fg=white,bg=WashUGreen}
+\setbeamercolor{block body}{fg=PosterDark,bg=white}
+\setbeamercolor{block alerted title}{fg=white,bg=WashURed}
+\setbeamercolor{block alerted body}{fg=PosterDark,bg=PosterLight}
+\setbeamercolor{item}{fg=WashURed}
+\setbeamercolor{enumerate item}{fg=WashURed}
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{itemize item}{\color{WashURed}$\blacktriangleright$}
+\setbeamertemplate{itemize subitem}{\color{WashUGreen}$\bullet$}
+\setbeamertemplate{caption}{\raggedright\insertcaption\par}
+
+% -------------------------------------------------------------------------
+% Font sizes
+% -------------------------------------------------------------------------
+\setbeamerfont{title in headline}{size=\fontsize{63}{70}\selectfont,series=\bfseries}
+\setbeamerfont{author in headline}{size=\fontsize{28}{34}\selectfont}
+\setbeamerfont{institute in headline}{size=\fontsize{28}{34}\selectfont}
+\setbeamerfont{block title}{size=\fontsize{29}{34}\selectfont,series=\bfseries}
+\setbeamerfont{block body}{size=\fontsize{21}{26}\selectfont}
+\setbeamerfont{caption}{size=\fontsize{15}{18}\selectfont}
+\setbeamerfont{alerted text}{series=\bfseries}
+
+% -------------------------------------------------------------------------
+% Layout helpers (Recalculated for exact 0.98\paperwidth symmetry)
+% -------------------------------------------------------------------------
+\newlength{\sepwidth}
+\newlength{\colwidth}
+\setlength{\sepwidth}{0.02\paperwidth}
+\setlength{\colwidth}{0.30\paperwidth}
+\newcommand{\separatorcolumn}{\begin{column}{\sepwidth}\end{column}}
+
+\newcommand{\figureplaceholder}[2]{%
+\begin{center}
+\begin{tikzpicture}
+  \draw[very thick, dashed, color=PosterGray, rounded corners=8pt] (0,0) rectangle (#1,#2);
+  \node[align=center, color=PosterGray] at (#1/2,#2/2) {\Large Figure placeholder\\[0.35em]\normalsize Replace with \texttt{\textbackslash includegraphics}};
+\end{tikzpicture}
+\end{center}}
+
+\newcommand{\maybeincludegraphics}[2]{%
+\IfFileExists{#2}{\includegraphics[#1]{#2}}{\figureplaceholder{13.3}{6.0}}}
+
+\newcommand{\keybox}[1]{%
+\begin{beamercolorbox}[rounded=true,shadow=false,sep=0.75em,wd=\linewidth]{block alerted body}
+\centering #1
+\end{beamercolorbox}}
+
+% -------------------------------------------------------------------------
+% Poster metadata
+% -------------------------------------------------------------------------
+\title{Causal Inference with Ordinal Outcomes: Flexible Estimation Using Normalizing Flows}
+\author{Chanhyuk Park}
+\institute{Washington University in St. Louis}
+
+\begin{document}
+\begin{frame}[t]
+
+% -------------------------------------------------------------------------
+% Header
+% -------------------------------------------------------------------------
+\begin{beamercolorbox}[wd=\paperwidth,sep=0.72cm,leftskip=1.45cm,rightskip=1.45cm]{headline}
+  \centering
+  \usebeamerfont{title in headline}\vspace{0.4cm} \\ \inserttitle\par\vspace{0.2cm}
+  \usebeamerfont{author in headline}\insertauthor\par\vspace{0.05cm}
+  \usebeamerfont{institute in headline}\insertinstitute \\ \vspace{0.4cm}
+\end{beamercolorbox}
+
+\vspace{0.48cm}
+\begin{columns}[t,totalwidth=0.98\paperwidth]
+\separatorcolumn
+
+% -------------------------------------------------------------------------
+% Column 1: Problem and method
+% -------------------------------------------------------------------------
+\begin{column}{\colwidth}
+
+\begin{block}{Motivation}
+\justifying
+Likert responses are ordinal, not cardinal. Estimating mean differences therefore imposes untestable measurement assumptions.
+
+\vspace{0.45em}
+\keybox{Target causal effects on the observed ordinal response distribution, not coefficients on an arbitrary latent scale.}
+
+\vspace{0.55em}
+\begin{itemize}\setlength\itemsep{0.25em}
+  \item Latent attitudes are observed only through ordered categories.
+  \item Latent treatment effects are identified only up to location and scale.
+  \item Category-specific and cumulative probability effects remain directly interpretable.
+\end{itemize}
+\end{block}
+
+\begin{block}{Ordinal Measurement and Estimands}
+
+% fig:latent {{{
+\begin{figure}
+\vspace{0.5cm}
+\centering
+\begin{tikzpicture}[>=stealth,scale=2]
+\draw[->,thick] (-5,0) -- (5.5,0) node[right] {$Y_i^\ast$};
+\foreach \x/\lab in {-3/$\alpha_0$,-1/$\alpha_1$,1/$\alpha_2$,3/$\alpha_3$}{
+    \draw[thick] (\x,-0.18) -- (\x,0.18);
+    \node[below] at (\x,-0.18) {\lab};
+}
+\node at (-4,0.55) {\small SD};
+\node at (-2,0.55) {\small D};
+\node at (0,0.55) {\small N};
+\node at (2,0.55) {\small A};
+\node at (4,0.55) {\small SA};
+\draw[thick,WashUGreen]
+plot[smooth] coordinates{(-4.5,0)(-3.8,.25)(-3,.55)(-2,.95)(-1,1.3)(0,1.55)(1,1.35)(2,.95)(3,.45)(4,.12)};
+\draw[thick,WashURed,dashed]
+plot[smooth] coordinates{(-3.7,0)(-3,.18)(-2,.42)(-1,.78)(0,1.15)(1,1.55)(2,1.45)(3,1.0)(4,.45)(5,.1)};
+\node[WashUGreen] at (-1.2,1.7) {\small Control};
+\node[WashURed] at (2.0,1.75) {\small Treatment};
+\end{tikzpicture}
+\caption{Treatment shifts the latent distribution across fixed reporting thresholds.}
+\end{figure}
+% }}}
+
+\vspace{-0.3em}
+\justifying
+The target object is the distribution of potential ordinal outcomes:
+\[
+\pi_j(d)=P\{Y_i(d)=j\}=\mathbb{E}_X\left[P(Y_i=j\mid D_i=d,X_i)\right].
+\]
+\vspace{-0.6em}
+\begin{itemize}\setlength\itemsep{0.25em}
+  \item \textbf{Category-specific effects:} $\Delta_j=\pi_j(1)-\pi_j(0)$.
+  \item \textbf{Cumulative effects:} $\Delta_{\geq j}=P\{Y_i(1)\geq j\}-P\{Y_i(0)\geq j\}$.
+\end{itemize}
+\end{block}
+
+\begin{block}{Estimation Problem}
+\justifying
+\begin{itemize}
+  \item Ordered logit and ordered probit $\implies$ \textbf{fixed latent error distribution} and a \textbf{parametric index}. 
+  \item When attitudes are polarized, clustered, skewed, or nonlinear in covariates, these assumptions can be violated.
+\end{itemize}
+
+\vspace{0.45em}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Approach & Strength & Limitation \\
+\midrule
+OLS & Simple & Assumes cardinal scores \\
+Dichotomization & Easy & Discards ordering info \\
+Ordered models & Respects ordering & Fixed error distribution \\
+Flexible flows & Likelihood-based & Higher computational cost \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.45em}
+\begin{beamercolorbox}[rounded=true,shadow=false,sep=0.55em,wd=\linewidth]{block alerted body}
+\justifying
+Latent treatment effects are identified only up to location and scale.
+\end{beamercolorbox}
+\end{block}
+
+
+\begin{block}{Conditional Normalizing Flows}
+% fig:nf_error {{{
+\begin{figure}[ht]
+\vspace{0.5cm}
+\centering
+\begin{tikzpicture}[>=stealth,scale=2]
+
+% --------------------------------------------------
+% Left panel: base distribution
+% --------------------------------------------------
+\begin{scope}[shift={(-4.6,0)}]
+    \draw[thick] (-2.1,0) rectangle (2.5,3.0);
+    \draw[->] (-1.75,0.25) -- (1.75,0.25) node[right] {\small $z$};
+    \draw[->] (-1.75,0.25) -- (-1.75,2.35) node[above right] {\small $p_Z(z)$};
+
+    \draw[thick]
+    plot[smooth]
+    coordinates{
+        (-1.6,0.28)
+        (-1.2,0.35)
+        (-0.8,0.75)
+        (-0.4,1.65)
+        (0,2.25)
+        (0.4,1.65)
+        (0.8,0.75)
+        (1.2,0.35)
+        (1.6,0.28)
+    };
+
+    \node at (0,-0.35) {\small Base distribution};
+    \node at (0,-0.75) {\small $z\sim N(0,1)$};
+\end{scope}
+
+% --------------------------------------------------
+% Middle: conditional normalizing flow
+% --------------------------------------------------
+\node[draw, rounded corners, align=center, minimum width=2.8cm, minimum height=1.1cm]
+    (flow) at (0,1.25)
+    {\small Conditional\\[-0.1em]\small normalizing flow\\[-0.1em]\small $T_\phi(\cdot\mid D_i,X_i)$};
+
+\draw[->,thick] (-2 ,1.55) -- (-1.4, 1.45);
+\draw[->,thick] (1.4, 1.45) -- (2.25,1.55);
+
+\node[align=center] at (0,2.55)
+    {\small Generative direction:\\[-0.1em]
+     \small $\varepsilon_i=T_\phi(z_i\mid D_i,X_i)$};
+
+\node[align=center] at (0,-0.55)
+    {\small Normalizing direction:\\[-0.1em]
+     \small $z_i=T_\phi^{-1}(\varepsilon_i\mid D_i,X_i)$};
+
+\draw[<-,thick,dashed] (-2,0.85) -- (-1.4, 0.95);
+\draw[<-,thick,dashed] (1.4, 0.95) -- (2.25,0.85);
+
+% --------------------------------------------------
+% Right panel: flexible latent error distribution
+% --------------------------------------------------
+\begin{scope}[shift={(4.6,0)}]
+    \draw[thick] (-2.1,0) rectangle (2.5,3.0);
+    \draw[->] (-1.75,0.25) -- (1.75,0.25) node[right] {\small $\varepsilon$};
+    \draw[->] (-1.75,0.25) -- (-1.75,2.35) node[above right] {\small $f_\varepsilon(\varepsilon\mid D,X)$};
+
+    \draw[thick]
+    plot[smooth]
+    coordinates{
+        (-1.7,0.28)
+        (-1.25,0.35)
+        (-0.9,0.60)
+        (-0.55,0.85)
+        (-0.2,0.65)
+        (0.15,0.45)
+        (0.45,0.75)
+        (0.75,1.65)
+        (1.0,2.05)
+        (1.25,1.20)
+        (1.55,0.35)
+        (1.8,0.28)
+    };
+
+    \node at (0,-0.35) {\small Flexible latent error};
+    \node at (0,-0.75) {\small distribution};
+\end{scope}
+
+% --------------------------------------------------
+% Bottom: ordered response connection
+% --------------------------------------------------
+\node[align=center] at (0,-1.75)
+{\small Combined with the latent index and thresholds, the estimated error distribution implies\\[-0.1em]
+ \small conditional ordinal probabilities $P(Y_i=j\mid D_i,X_i)$.};
+
+\end{tikzpicture}
+
+\label{fig:nf_error}
+\end{figure}
+% }}}
+
+In the proposed framework, this is constructed using monotonic rational-quadratic splines (RQS), replacing the parametric error family while retaining analytical tractability and exact likelihood evaluation.
+\end{block}
+
+\end{column}
+\separatorcolumn
+
+% -------------------------------------------------------------------------
+% Column 2: Framework and simulation
+% -------------------------------------------------------------------------
+\begin{column}{\colwidth}
+
+\begin{block}{Proposed Framework}
+\justifying
+The estimator keeps the threshold-crossing structure but replaces restrictive parametric assumptions with a conditional normalizing flow.
+
+\vspace{0.35em}
+\begin{center}
+
+% proposed framework {{{
+\begin{tikzpicture}[
+  scale=1.34, transform shape,
+  font=\tiny,
+  box/.style={draw=WashUGreen, very thick, rounded corners=7pt, fill=PosterPaleGreen, align=center, minimum height=1.0cm, text width=4.1cm},
+  rbox/.style={draw=WashURed, very thick, rounded corners=7pt, fill=PosterPaleRed, align=center, minimum height=1.0cm, text width=4.8cm},
+  prob/.style={draw=PosterGray, thick, rounded corners=5pt, fill=white, align=center, minimum height=0.78cm, text width=2.35cm},
+  arr/.style={-{Latex[length=3.8mm,width=2.7mm]}, very thick, color=WashURed}
+]
+
+% Top row: information enters the model
+\node[box] (xd) at (-3.4,0) {Observed inputs\\$X_i, D_i$};
+\node[box] (z) at (3.4,0) {Base distribution\\$Z\sim N(0,1)$};
+
+% Middle row: the flow creates a flexible latent distribution
+\node[rbox, text width=6.5cm] (flow) at (0,-1.95) {Conditional normalizing flow};
+\node[box, text width=6.5cm] (cdf) at (0,-3.85) {Flexible latent CDF\\$F_\theta(y\mid X_i,D_i)$};
+
+% Threshold row
+\node[prob] (p1) at (-4.2,-5.75) {$P(Y_i=1)$};
+\node[prob] (p2) at (-1.4,-5.75) {$P(Y_i=2)$};
+\node[prob] (p3) at (1.4,-5.75) {$\cdots$};
+\node[prob] (p4) at (4.2,-5.75) {$P(Y_i=J)$};
+\node[align=center, color=PosterGray] (thr) at (0,-4.95) {thresholds $\alpha_1,\ldots,\alpha_{J-1}$};
+
+% Final row
+\node[rbox, text width=6.6cm] (effects) at (0,-7.35) {Standardize over covariates\\category-specific $\Delta_j$ and cumulative $\Delta_{\geq j}$ effects};
+
+\draw[arr] (xd) -- (flow);
+\draw[arr] (z) -- (flow);
+\draw[arr] (flow) -- (cdf);
+\draw[arr] (cdf) -- (thr);
+\draw[arr] (thr) -- (p1.north);
+\draw[arr] (thr) -- (p2.north);
+\draw[arr] (thr) -- (p3.north);
+\draw[arr] (thr) -- (p4.north);
+\draw[arr] (p1.south) |- (effects.west);
+\draw[arr] (p2.south) -- (effects.north);
+\draw[arr] (p3.south) -- (effects.north);
+\draw[arr] (p4.south) |- (effects.east);
+
+\end{tikzpicture}
+% }}}
+\end{center}
+
+\vspace{0.35em}
+For each response category,
+\[
+P(Y_i=j\mid X_i,D_i)=F_\theta(\alpha_j\mid X_i,D_i)-F_\theta(\alpha_{j-1}\mid X_i,D_i).
+\]
+We estimate $\Theta = \{\tau, h, \phi, \alpha\}$ directly by maximizing the log-likelihood:
+\[
+\ell(\Theta) = \sum_{i=1}^{n} \sum_{j=0}^{J} \mathbb{I}(Y_i=j) \log \left[ F_\theta(\alpha_j \mid X_i,D_i) - F_\theta(\alpha_{j-1} \mid X_i,D_i) \right]
+\]
+This provides a genuine likelihood rather than a surrogate loss, retaining exact inference.
+\end{block}
+
+\begin{block}{Monte Carlo Simulation}
+\justifying
+\vspace{0.25em}
+\begin{figure}
+  \centering
+  \maybeincludegraphics{width=0.98\textwidth}{../figures/fig_polarized_mixture_N1000.pdf}
+  \caption{Single-index model with bimodal error: category-specific treatment effects.}
+\end{figure}
+
+\vspace{0.15em}
+\begin{figure}
+  \centering
+  \maybeincludegraphics{width=0.98\textwidth}{../figures/fig_wasserstein_convergence.pdf}
+  \caption{RMSE of Wasserstein distance between estimated and true response distributions.}
+\end{figure}
+
+\vspace{-0.3em}
+\begin{itemize}\setlength\itemsep{0.25em}
+  \item Ordered response models perform well when assumptions are approximately correct.
+  \item When latent-distribution assumptions fail, ordered logit/probit can distort category-level treatment effects.
+  \item Structured flow estimators improve robustness while retaining statistical efficiency.
+\end{itemize}
+\end{block}
+
+\end{column}
+\separatorcolumn
+
+% -------------------------------------------------------------------------
+% Column 3: Empirical applications and takeaway
+% -------------------------------------------------------------------------
+\begin{column}{\colwidth}
+
+\begin{block}{Empirical Replications}
+\justifying
+Two published survey experiments illustrate when flexible estimation confirms conventional findings and when it changes substantive interpretation.
+
+\vspace{0.4em}
+  \textbf{Human rights and support for military intervention(Tomz and Weeks, 2020)}\par
+Estimated treatment effects are broadly stable across empirical, ordered response, and flow-based estimators, suggesting conventional models are adequate in this setting.
+
+\vspace{0.25em}
+\begin{figure}
+  \centering
+  \maybeincludegraphics{width=0.98\textwidth}{../figures/fig_tomz_empirical.pdf}
+  \caption{Category-specific effects in the Tomz replication.}
+\end{figure}
+
+\vspace{0.55em}
+  \textbf{Authoritarian propaganda and public opinion (Mattingly et al. 2025)}\par
+Estimated effects differ across modeling assumptions, especially in middle and upper response categories. Flexible distributional modeling changes which categories absorb the treatment-induced probability shift.
+
+\vspace{0.25em}
+\begin{figure}
+  \centering
+  \maybeincludegraphics{width=0.98\textwidth}{../figures/fig_mattingly_empirical.pdf}
+  \caption{Category-specific effects in the Mattingly replication.}
+\end{figure}
+\end{block}
+
+\begin{block}{Take Away}
+\justifying
+\begin{itemize}\setlength\itemsep{0.25em}
+  \item \textbf{Report Probability-Based Quantities:} Avoid interpreting raw latent coefficients. Focus on category-specific ($\Delta_j$) and cumulative ($\Delta_{\geq j}$) probability effects.
+  \item \textbf{Assess Distributional Sensitivity:} Use flexible flow estimators as a robustness check to ensure findings are not driven by arbitrary normal or logistic assumptions.
+\end{itemize}
+\end{block}
+
+\begin{block}{Contact and Materials}
+\justifying
+\textbf{Chanhyuk Park}\par
+Washington University in St. Louis\par
+Email: \texttt{chanhyuk@wustl.edu}\par
+\vspace{0.3em}
+Code \& Data: \url{https://github.com/chanhyuk58/ordinal_outcome}
+\end{block}
+
+\end{column}
+\separatorcolumn
+\end{columns}
+
+\end{frame}
+\end{document}

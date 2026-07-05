@@ -1,0 +1,593 @@
+%vim:foldmethod=marker
+\documentclass{article}
+\usepackage{natbib}
+\usepackage{paper} % Assumed custom style package from your local setup
+\usepackage{xcolor}
+\usepackage{tikz}
+
+\renewcommand{\thesection}{\Alph{section}}
+\renewcommand{\thesubsection}{\Alph{section}.\arabic{subsection}}
+\renewcommand{\thefigure}{\Alph{section}.\arabic{figure}}
+\renewcommand{\thetable}{\Alph{section}.\arabic{table}}
+\renewcommand{\theequation}{\Alph{section}.\arabic{equation}}
+
+\numberwithin{figure}{section}
+\numberwithin{table}{section}
+\numberwithin{equation}{section}
+
+\setcounter{figure}{0}
+\setcounter{table}{0}
+\setcounter{equation}{0}
+
+\onehalfspacing
+
+\title{Online Appendix for \\ \vspace{0.5em} {Causal Inference with Ordinal Outcomes: Flexible Estimation Framework Using Normalizing Flows}}
+\author{Chanhyuk Park}
+\date{}
+
+\begin{document}
+\maketitle
+
+This appendix provides supplementary theoretical derivations, estimation details, extensions to heterogeneous reporting thresholds, comprehensive simulation designs with full results, and detailed tables for the empirical applications.
+
+\tableofcontents
+\clearpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Additional Theoretical Details}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\label{app:theory}
+
+\subsection{Probability-Based Estimands and Latent Scale Invariance}
+Recall that the observed ordinal response $Y_i \in \{0, 1, \dots, J\}$ is generated via the threshold-crossing model:
+\begin{equation}
+Y_i = j \quad \Longleftrightarrow \quad \alpha_{j-1} < Y_i^* \le \alpha_j,
+\end{equation}
+where $Y_i^*$ is the latent potential outcome and $-\infty = \alpha_{-1} < \alpha_0 < \dots < \alpha_J = \infty$. 
+
+Let $\mathcal{T}: \mathbb{R} \to \mathbb{R}$ be a strictly increasing, positive affine transformation: $\mathcal{T}(y) = a + cy$ with $c > 0$. Under this transformation, we define the transformed latent outcome $\tilde{Y}_i^* = \mathcal{T}(Y_i^*)$ and the transformed thresholds $\tilde{\alpha}_j = \mathcal{T}(\alpha_j)$. The observed category probabilities under the transformed scale are given by:
+\begin{align*}
+P(\tilde{Y}_i = j) &= P(\tilde{\alpha}_{j-1} < \tilde{Y}_i^* \le \tilde{\alpha}_j) \\
+&= P(a + c\alpha_{j-1} < a + cY_i^* \le a + c\alpha_j) \\
+&= P(\alpha_{j-1} < Y_i^* \le \alpha_j) = P(Y_i = j).
+\end{align*}
+Because the category probabilities $\pi_j(d) = P(Y_i(d) = j)$ remain unchanged under any positive affine scale shift, any causal quantity defined directly as a functional of these probabilities is invariant to the choice of scale. 
+
+\subsection{Wasserstein Distance as a Distributional Metric}
+To summarize overall treatment effects across the entire distribution without relying on arbitrary numerical score assignments, we employ the one-dimensional $L_1$ Wasserstein distance (also known as the Earth Mover's Distance). For two cumulative distribution functions (CDFs) $F_1$ and $F_0$ defined over the ordered categories $\{0, 1, \dots, J\}$, the Wasserstein distance is formulated as:
+\begin{equation}
+\mathcal{W}(F_1, F_0) = \sum_{j=0}^{J-1} \left| F_1(j) - F_0(j) \right|,
+\end{equation}
+where $F_d(j) = P(Y_i(d) \le j)$ for $d \in \{0,1\}$. This metric measures the minimum cost of shifting probability mass to transform the control outcome distribution into the treatment outcome distribution, preserving the natural ordering of categories.
+
+\clearpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Extensions: Heterogeneous Reporting Thresholds}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\label{app:heterogeneous}
+
+The threshold-crossing model in Section~\ref{subsec:setup} assumes that all respondents share common thresholds $\alpha_j$. In many survey settings, respondents may interpret the ordinal response scale differently based on their individual characteristics, a phenomenon known as differential item functioning (DIF). 
+
+We can extend the proposed flexible estimation framework to accommodate heterogeneous reporting behavior. Following the generalized ordered response framework \citep{Williams2006a}, we model the individual-specific thresholds $\alpha_{j,i}$ as a function of respondent-level covariates $W_i \subseteq X_i$:
+\begin{equation}
+\alpha_{j,i} = \alpha_j + W_i^\top \gamma_j,
+\end{equation}
+where $\gamma_j$ is a vector of parameters capturing how the thresholds shift across individuals, subject to the ordering constraint:
+\begin{equation}
+\alpha_{0,i} < \alpha_{1,i} < \dots < \alpha_{J-1,i} \quad \forall \, i.
+\end{equation}
+Under this specification, the probability of observing category $j$ becomes:
+\begin{align}
+P(Y_i = j \mid D_i, X_i) = F_\phi \left( \alpha_j + W_i^\top \gamma_j - h(X_i) - D_i^\top \tau \mid D_i, X_i \right) \nonumber \\
+- F_\phi \left( \alpha_{j-1} + W_i^\top \gamma_{j-1} - h(X_i) - D_i^\top \tau \mid D_i, X_i \right).
+\end{align}
+This generalized formulation is fully compatible with both the semiparametric KDE-based estimator and the conditional normalizing flow framework. In the flow-based setting, the parameters $\gamma_j$ are jointly estimated via maximum likelihood alongside the flow parameters $\phi$ and the index coefficients.
+
+\clearpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Estimation Details and Proofs}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\label{app:estimation}
+
+\subsection{KDE-Based Ordinal Regression}
+\label{app:kde}
+
+This appendix provides details for the semiparametric KDE-based estimator. We first define the quasi-likelihood, then describe the kernel estimation of the error distribution and state a consistency result.
+
+\subsubsection{Model and Quasi-Likelihood}
+Recall the latent outcome model:
+$$
+Y_i^* = f(X_i,\beta) + D_i^\top\tau + \varepsilon_i,
+$$
+and the threshold-based reporting function:
+$$
+Y_i = j
+\quad\Longleftrightarrow\quad
+\alpha_{j-1} < Y_i^* \le \alpha_j,
+\qquad j = 0,1,\dots,J,
+$$
+with $-\infty = \alpha_{-1} < \alpha_0 < \dots < \alpha_J = \infty$. For notational simplicity, define the latent outcome index:
+$$
+V_i(\beta,\tau) = f(X_i,\beta) + D_i^\top\tau.
+$$
+Let $F$ denote the (unknown) CDF of $\varepsilon_i$. Conditional on $(X_i,D_i)$, the probability of observing category $j$ is:
+$$
+p_j(X_i,D_i;\alpha,\beta,\tau,F)
+= F\bigl( \alpha_j - V_i(\beta,\tau) \bigr)
+- F\bigl( \alpha_{j-1} - V_i(\beta,\tau) \bigr).
+$$
+If $F$ were known, the population log-likelihood would be:
+$$
+\ell(\alpha,\beta,\tau;F)
+= \mathbb{E} \left[
+\sum_{j=0}^J 1_{\{Y_i=j\}}
+\log p_j(X_i,D_i;\alpha,\beta,\tau,F)
+\right].
+$$
+In a sample of size $n$, the infeasible sample log-likelihood is:
+$$
+\ell_n(\alpha,\beta,\tau;F)
+= \frac{1}{n} \sum_{i=1}^n
+\sum_{j=0}^J 1_{\{Y_i=j\}}
+\log p_j(X_i,D_i;\alpha,\beta,\tau,F).
+$$
+When $F$ is unknown, we replace it with a nonparametric estimator $\hat{F}$ constructed via KDE, obtaining the \emph{quasi}-log-likelihood:
+$$
+\hat{\ell}_{n}(\alpha,\beta,\tau)
+= \frac{1}{n} \sum_{i=1}^n \hat{m}(X_i)
+\sum_{j=0}^J 1_{\{Y_i=j\}}
+\log \hat{p}_j(X_i,D_i;\alpha,\beta,\tau),
+$$
+where
+$$
+\hat{p}_{j}(X_i,D_i;\alpha,\beta,\tau)
+= \hat{F}\bigl( \alpha_j - V_i(\beta,\tau) \bigr)
+- \hat{F}\bigl( \alpha_{j-1} - V_i(\beta,\tau) \bigr),
+$$
+and $\hat{m}(X_i)$ is a trimming function that downweights observations in extreme regions of the covariate space where the KDE may be unstable. The KDE-based estimator $(\hat{\alpha},\hat{\beta},\hat{\tau})$ is defined as any maximizer of $\hat{\ell}_n(\alpha,\beta,\tau)$.
+
+\subsubsection{Kernel Estimation of the Error Distribution}
+To construct $\hat{F}$, we exploit the relationship between the distribution of the index $V_i$ and the error term $\varepsilon_i$. Let:
+$$
+g_1(v \mid Y \le j) = \text{density of } V \text{ given } Y \le j,
+\qquad
+g_0(v \mid Y > j) = \text{density of } V \text{ given } Y > j,
+$$
+and let:
+$$
+\pi_j = \mathbb{P}(Y_i \le j),
+\qquad
+1-\pi_j = \mathbb{P}(Y_i > j).
+$$
+Then, by Bayes' rule:
+$$
+\mathbb{P}(Y_i \le j \mid V_i = v)
+= \frac{ \pi_j  g_1(v \mid Y \le j) }{
+\pi_j  g_1(v \mid Y \le j)
++ (1-\pi_j)  g_0(v \mid Y > j)
+}.
+$$
+Since $Y_i^* = V_i + \varepsilon_i$, and $Y_i \le j$ iff $Y_i^* \le \alpha_j$, we have:
+$$
+\mathbb{P}(Y_i \le j \mid V_i = v)
+= \mathbb{P}\bigl( \varepsilon_i \le \alpha_j - v \bigr)
+= F\bigl( \alpha_j - v \bigr).
+$$
+Thus, if we can estimate $\pi_j$, $g_1(\cdot)$, and $g_0(\cdot)$ from the data, we can construct an estimator $\hat{F}$ such that:
+$$
+\hat{F}(\alpha_j - v)
+\approx \widehat{\mathbb{P}}(Y_i \le j \mid V_i = v).
+$$
+
+The probabilities $\pi_j$ and $1-\pi_j$ can be estimated by sample proportions:
+$$
+\hat{\pi}_{j} = \frac{1}{n} \sum_{i=1}^n 1_{\{Y_i \le j\}},
+\qquad
+1-\hat{\pi}_{j} = \frac{1}{n} \sum_{i=1}^n 1_{\{Y_i > j\}}.
+$$
+The conditional densities $g_1$ and $g_0$ are estimated using KDE. For concreteness, suppose we use a univariate kernel $K(\cdot)$ (e.g., Gaussian) and bandwidths that may depend on $j$. Let $n_1(j) = \sum_{i=1}^n 1_{\{Y_i \le j\}}$ and $n_0(j) = \sum_{i=1}^n 1_{\{Y_i > j\}}$. Define the subsamples:
+$$
+\{V_i : Y_i \le j\}, \qquad \{V_i : Y_i > j\},
+$$
+and estimate the conditional densities as:
+$$
+\hat{g}_{1}(v \mid Y \le j)
+= \frac{1}{n_1(j) h_{1j}} \sum_{i: Y_i \le j}
+K\left( \frac{v - V_i}{h_{1j}} \right),
+$$
+$$
+\hat{g}_{0}(v \mid Y > j)
+= \frac{1}{n_0(j) h_{0j}} \sum_{i: Y_i > j}
+K\left( \frac{v - V_i}{h_{0j}} \right),
+$$
+where $h_{1j}$ and $h_{0j}$ are bandwidths chosen according to standard rules. Then, the estimated conditional probability is:
+$$
+\widehat{\mathbb{P}}(Y_i \le j \mid V_i = v)
+= \frac{ \hat{\pi}_j  \hat{g}_1(v \mid Y \le j) }{
+\hat{\pi}_j  \hat{g}_1(v \mid Y \le j)
++ (1-\hat{\pi}_j)  \hat{g}_0(v \mid Y > j)
+}.
+$$
+We interpret this as an estimator of the CDF of $\varepsilon_i$ evaluated at $\alpha_j - v$:
+$$
+\hat{F}(\alpha_j - v)
+\equiv
+\widehat{\mathbb{P}}(Y_i \le j \mid V_i = v).
+$$
+
+In practice, the KDE is implemented with local smoothing and trimming to reduce boundary bias and instability in regions with sparse data. Following \citet{Abramson1982a} and \citet{Silverman1986a}, one can use pilot density estimates to define location-specific bandwidths and damping functions. We adopt these techniques, as in \citet{Klein2002a}, to ensure $\sqrt{n}$-consistency.
+
+\subsubsection{Consistency of the KDE-Based Estimator}
+This section sketches the main consistency result for the KDE-based estimator.
+
+\textbf{Assumption C.1} (Smoothness of the Index Distribution). 
+\textit{The conditional density of the index $V_i(\beta,\tau)$ given $(X_i,D_i)$ exists, is strictly positive on its support, and is continuously differentiable up to a sufficiently high order. The support of $V_i$ is compact or can be truncated to a compact set via trimming without affecting the asymptotic behavior of the estimator.}
+
+\textbf{Assumption C.2} (KDE Regularity Conditions). 
+\textit{The kernel $K(\cdot)$ is a bounded, symmetric density with compact support. Bandwidths $h_{1j}$ and $h_{0j}$ satisfy $h_{1j} \to 0$, $h_{0j} \to 0$, and $n h_{1j} \to \infty$, $n h_{0j} \to \infty$ as $n \to \infty$, with additional conditions ensuring the consistency of locally smoothed KDEs.}
+
+Under these conditions, the KDE estimators $\hat{g}_1$ and $\hat{g}_0$ converge uniformly to $g_1$ and $g_0$, and the estimated CDF $\hat{F}$ converges uniformly to the true $F$ on compact subsets of the support.
+
+\textbf{Theorem C.1} (Consistency of the KDE-Based Estimator). 
+\textit{Suppose the latent outcome model and threshold structure are correctly specified, and Assumptions C.1--C.2 hold. Then, as $n \to \infty$,}
+$$
+\bigl| (\hat{\alpha},\hat{\beta},\hat{\tau}) - (\alpha,\beta,\tau) \bigr| = o_p(1),
+$$
+\textit{up to an arbitrary positive affine transformation $(a + c\alpha, c\beta, c\tau)$ with $c>0$.}
+
+Because the ordinal model is identified only up to scale, we impose the error-variance normalization $\mathrm{Var}(\varepsilon_i)=1$ ex post by rescaling the coefficients using the estimated error variance $\hat{\sigma}_\varepsilon^2$.
+
+\subsection{Normalizing Flows}
+\label{app:flows}
+
+This appendix provides additional details for the normalizing-flow-based estimator described in Section~\ref{sec:estimation}.
+
+\subsubsection{Change-of-Variables Formula}
+Let $Z$ be a random variable with a known base density $f_Z(z)$ (the standard normal density), and let $T_\theta: \mathbb{R} \to \mathbb{R}$ be an invertible, differentiable transformation parameterized by $\theta$. Define:
+$$
+\varepsilon = T_\theta(Z).
+$$
+Then, by the change-of-variables formula, the density of $\varepsilon$ is:
+$$
+f_\theta(\varepsilon)
+= f_Z\bigl( T_\theta^{-1}(\varepsilon) \bigr)
+\left| \frac{d}{d\varepsilon} T_\theta^{-1}(\varepsilon) \right|.
+$$
+The corresponding CDF $F_\theta$ is:
+$$
+F_\theta(u)
+= \int_{-\infty}^u f_\theta(t) \, dt.
+$$
+
+\subsubsection{Ordinal Likelihood with a Flow-Based Error Distribution}
+We embed the flow-based error distribution into the latent outcome model:
+$$
+Y_i^* = f(X_i,\beta) + D_i^\top\tau + \varepsilon_i,
+\qquad
+\varepsilon_i = T_\theta(Z_i),
+\quad
+Z_i \sim \mathcal{N}(0,1),
+$$
+with thresholds $\alpha$ defining the observed ordinal outcome:
+$$
+Y_i = j
+\quad\Longleftrightarrow\quad
+\alpha_{j-1} < Y_i^* \le \alpha_j.
+$$
+Let $f_\theta$ and $F_\theta$ denote the density and CDF of $\varepsilon_i$ implied by the flow $T_\theta$. Conditional on $(X_i,D_i)$, the probability of category $j$ is:
+$$
+\mathbb{P}(Y_i = j \mid X_i,D_i;\alpha,\beta,\tau,\theta)
+= F_\theta\bigl( \alpha_j - V_i(\beta,\tau) \bigr)
+- F_\theta\bigl( \alpha_{j-1} - V_i(\beta,\tau) \bigr),
+$$
+where $V_i(\beta,\tau) = f(X_i,\beta) + D_i^\top\tau$. The sample log-likelihood is:
+$$
+\ell_n(\alpha,\beta,\tau,\theta)
+= \frac{1}{n} \sum_{i=1}^n
+\sum_{j=0}^J 1_{\{Y_i=j\}}
+\log\left[
+F_\theta\bigl( \alpha_j - V_i(\beta,\tau) \bigr)
+- F_\theta\bigl( \alpha_{j-1} - V_i(\beta,\tau) \bigr.
+\right].
+$$
+We estimate $(\alpha,\beta,\tau,\theta)$ jointly by maximizing $\ell_n(\alpha,\beta,\tau,\theta)$ with respect to all parameters.
+
+\subsubsection{Consistency of the Flow-Based Estimator}
+Let $(\alpha_0,\beta_0,\tau_0,F_0)$ denote the true parameters and error distribution.
+
+\textbf{Assumption C.3} (Flow Approximation and Identification). 
+\textit{The flow family $\{F_\theta : \theta \in \Theta\}$ is rich enough that there exists $\theta_0 \in \Theta$ such that $F_{\theta_0} = F_0$ (or $F_{\theta_0}$ approximates $F_0$ arbitrarily well). The parameter vector $(\alpha,\beta,\tau,\theta)$ is identified up to a positive affine transformation $(a + c\alpha, c\beta, c\tau)$ with $c>0$.}
+
+\textbf{Assumption C.4} (Regularity Conditions). 
+\textit{The parameter space for $(\alpha,\beta,\tau,\theta)$ is compact or can be restricted to a compact subset; the log-likelihood function $\ell_n(\alpha,\beta,\tau,\theta)$ satisfies standard regularity conditions (continuity, differentiability, integrability); and the model is correctly specified.}
+
+\textbf{Theorem C.2} (Consistency of the Flow-Based Estimator). 
+\textit{Suppose the latent outcome model and threshold structure are correctly specified, and Assumptions C.3--C.4 hold. Then, as $n \to \infty$,}
+$$
+\bigl| (\hat{\alpha},\hat{\beta},\hat{\tau},\hat{\theta})
+- (\alpha_0,\beta_0,\tau_0,\theta_0)
+\bigr| = o_p(1),
+$$
+\textit{up to an arbitrary positive affine transformation $(a + c\alpha_0, c\beta_0, c\tau_0)$ with $c>0$.}
+
+We impose the error-variance normalization $\mathrm{Var}(\varepsilon_i) = 1$ ex post. Given $\hat{\theta}$, we estimate:
+$$
+\hat{\sigma}_\varepsilon^2
+= \mathrm{Var}_{F_{\hat{\theta}}}(\varepsilon_i)
+\approx \frac{1}{M} \sum_{m=1}^M \bigl( T_{\hat{\theta}}(Z_m) \bigr)^2,
+$$
+where $Z_m \sim \mathcal{N}(0,1)$ are independent draws. We then report:
+$$
+\hat{\tau}^{\text{unit-var}} = \frac{\hat{\tau}}{\hat{\sigma}_\varepsilon},
+\qquad
+\hat{\beta}^{\text{unit-var}} = \frac{\hat{\beta}}{\hat{\sigma}_\varepsilon}.
+$$
+
+\clearpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Comprehensive Simulation Details & Full Results}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\label{app:simulation}
+
+\subsection{Detailed Specifications of the Seven Data-Generating Processes}
+We evaluate finite-sample performance across seven distinct DGPs. In each setting, treatment $D_i \sim \text{Bernoulli}(0.5)$ is randomized, and baseline covariates $X_i = (X_{i1}, X_{i2})^\top$ are drawn from independent standard normal distributions. The latent thresholds partition the outcome space into $J+1=5$ ordered categories: $\alpha = (-1.5, -0.5, 0.5, 1.5)^\top$.
+
+\begin{enumerate}
+    \item \textbf{Normal Linear (Benchmark):} The classic ordered probit setting.
+    \begin{align*}
+    Y_i^* &= 0.5 X_{i1} - 0.25 X_{i2} + 0.5 D_i + \varepsilon_i, \\
+    \varepsilon_i &\sim \mathcal{N}(0, 1).
+    \end{align*}
+    
+    \item \textbf{Logistic Linear (Benchmark):} The classic ordered logit setting.
+    \begin{align*}
+    Y_i^* &= 0.5 X_{i1} - 0.25 X_{i2} + 0.5 D_i + \varepsilon_i, \\
+    \varepsilon_i &\sim \text{Logistic}(0, 1).
+    \end{align*}
+    
+    \item \textbf{Skewed Lognormal:} Introduces heavily right-skewed latent error.
+    \begin{align*}
+    Y_i^* &= 0.5 X_{i1} - 0.25 X_{i2} + 0.5 D_i + \varepsilon_i, \\
+    \varepsilon_i &= \exp(u_i) - \mathbb{E}[\exp(u_i)], \quad u_i \sim \mathcal{N}(0, 0.5^2).
+    \end{align*}
+    
+    \item \textbf{Polarized Mixture (Bimodal):} Models polarized latent attitudes via a bimodal mixture of normals.
+    \begin{align*}
+    Y_i^* &= 0.5 X_{i1} - 0.25 X_{i2} + 0.5 D_i + \varepsilon_i, \\
+    \varepsilon_i &\sim 0.5 \mathcal{N}(-1.2, 0.6^2) + 0.5 \mathcal{N}(1.2, 0.6^2).
+    \end{align*}
+    
+    \item \textbf{Heteroskedastic:} Violates the proportional odds / constant scale assumption.
+    \begin{align*}
+    Y_i^* &= 0.5 X_{i1} - 0.25 X_{i2} + 0.5 D_i + \sigma_i \varepsilon_i, \\
+    \sigma_i &= \exp(0.3 D_i + 0.2 X_{i1}), \quad \varepsilon_i \sim \mathcal{N}(0, 1).
+    \end{align*}
+    
+    \item \textbf{Nonlinear Moderates:} Evaluates nonlinear latent response functions.
+    \begin{align*}
+    Y_i^* &= 0.5 \sin(\pi X_{i1}) - 0.25 X_{i2}^2 + 0.5 D_i + \varepsilon_i, \\
+    \varepsilon_i &\sim \mathcal{N}(0, 1).
+    \end{align*}
+    
+    \item \textbf{High Dimensional:} Evaluates performance with 10 covariates, of which only the first four are active, under a standard normal error distribution.
+\end{enumerate}
+
+\subsection{Full Simulation Results Table}
+Table~\ref{tab:app_full_wasserstein} provides the complete simulation results evaluating the Wasserstein distance from the estimated conditional distribution to the true distribution across all sample sizes ($N \in \{500, 1000, 2000\}$).
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Full Simulation Results: Wasserstein Distance to Truth Across All Settings}
+\label{tab:app_full_wasserstein}
+\begin{tabular}{lllccccc}
+\toprule
+\textbf{DGP Setting} & \textbf{N} & \textbf{Estimator} & \textbf{True} & \textbf{Mean} & \textbf{SD} & \textbf{Bias} & \textbf{RMSE} \\
+\midrule
+\textbf{Heteroskedastic} & 500 & Empirical & 0.6049 & 0.6220 & 0.0811 & 0.01710 & 0.0825 \\
+ &  & Ordered Probit & 0.6049 & 0.1908 & 0.1138 & -0.41409 & 0.4293 \\
+ &  & Ordered Logit & 0.6049 & 0.2309 & 0.1227 & -0.37397 & 0.3934 \\
+ &  & Structured Flow & 0.6049 & 0.5826 & 0.1057 & -0.02233 & 0.1075 \\
+ &  & Model-Free Flow & 0.6049 & 0.6077 & 0.0914 & 0.00278 & 0.0910 \\
+\cline{2-8}
+ & 1000 & Empirical & 0.6049 & 0.6173 & 0.0629 & 0.01247 & 0.0638 \\
+ &  & Ordered Probit & 0.6049 & 0.1654 & 0.0801 & -0.43945 & 0.4466 \\
+ &  & Ordered Logit & 0.6049 & 0.2033 & 0.0874 & -0.40157 & 0.4109 \\
+ &  & Structured Flow & 0.6049 & 0.5902 & 0.0821 & -0.01465 & 0.0830 \\
+ &  & Model-Free Flow & 0.6049 & 0.6058 & 0.0582 & 0.00091 & 0.0579 \\
+\cline{2-8}
+ & 2000 & Empirical & 0.6049 & 0.6096 & 0.0397 & 0.00472 & 0.0398 \\
+ &  & Ordered Probit & 0.6049 & 0.1801 & 0.0592 & -0.42478 & 0.4288 \\
+ &  & Ordered Logit & 0.6049 & 0.2208 & 0.0640 & -0.38403 & 0.3893 \\
+ &  & Structured Flow & 0.6049 & 0.6038 & 0.0355 & -0.00104 & 0.0354 \\
+ &  & Model-Free Flow & 0.6049 & 0.6045 & 0.0395 & -0.00036 & 0.0393 \\
+\midrule
+\textbf{High Dimensional} & 500 & Empirical & 0.7011 & 0.7160 & 0.1055 & 0.01483 & 0.1061 \\
+ &  & Ordered Probit & 0.7011 & 0.7052 & 0.1052 & 0.00409 & 0.1047 \\
+ &  & Ordered Logit & 0.7011 & 0.6903 & 0.1052 & -0.01085 & 0.1052 \\
+ &  & Structured Flow & 0.7011 & 0.6640 & 0.1416 & -0.03718 & 0.1458 \\
+ &  & Model-Free Flow & 0.7011 & 0.7044 & 0.1001 & 0.00324 & 0.0996 \\
+\cline{2-8}
+ & 1000 & Empirical & 0.7011 & 0.7008 & 0.0749 & -0.00030 & 0.0745 \\
+ &  & Ordered Probit & 0.7011 & 0.6970 & 0.0692 & -0.00412 & 0.0690 \\
+ &  & Ordered Logit & 0.7011 & 0.6822 & 0.0701 & -0.01892 & 0.0723 \\
+ &  & Structured Flow & 0.7011 & 0.6698 & 0.0774 & -0.03130 & 0.0831 \\
+ &  & Model-Free Flow & 0.7011 & 0.7016 & 0.0724 & 0.00046 & 0.0721 \\
+\cline{2-8}
+ & 2000 & Empirical & 0.7011 & 0.7078 & 0.0497 & 0.00669 & 0.0499 \\
+ &  & Ordered Probit & 0.7011 & 0.6989 & 0.0409 & -0.00220 & 0.0408 \\
+ &  & Ordered Logit & 0.7011 & 0.6830 & 0.0407 & -0.01815 & 0.0443 \\
+ &  & Structured Flow & 0.7011 & 0.6980 & 0.0516 & -0.00314 & 0.0514 \\
+ &  & Model-Free Flow & 0.7011 & 0.6983 & 0.0458 & -0.00288 & 0.0456 \\
+\midrule
+\textbf{Logistic Linear} & 500 & Empirical & 0.4930 & 0.4712 & 0.1021 & -0.02182 & 0.1039 \\
+ &  & Ordered Probit & 0.4930 & 0.4918 & 0.0836 & -0.00125 & 0.0832 \\
+ &  & Ordered Logit & 0.4930 & 0.4924 & 0.0832 & -0.00066 & 0.0827 \\
+ &  & Structured Flow & 0.4930 & 0.4965 & 0.0921 & 0.00345 & 0.0918 \\
+ &  & Model-Free Flow & 0.4930 & 0.5028 & 0.0978 & 0.00972 & 0.0978 \\
+\cline{2-8}
+ & 1000 & Empirical & 0.4930 & 0.4901 & 0.0709 & -0.00294 & 0.0706 \\
+ &  & Ordered Probit & 0.4930 & 0.5102 & 0.0556 & 0.01718 & 0.0579 \\
+ &  & Ordered Logit & 0.4930 & 0.5097 & 0.0554 & 0.01669 & 0.0576 \\
+ &  & Structured Flow & 0.4930 & 0.5111 & 0.0685 & 0.01808 & 0.0705 \\
+ &  & Model-Free Flow & 0.4930 & 0.5110 & 0.0618 & 0.01797 & 0.0640 \\
+\cline{2-8}
+ & 2000 & Empirical & 0.4930 & 0.4923 & 0.0549 & -0.00075 & 0.0546 \\
+ &  & Ordered Probit & 0.4930 & 0.5044 & 0.0427 & 0.01138 & 0.0440 \\
+ &  & Ordered Logit & 0.4930 & 0.5055 & 0.0415 & 0.01251 & 0.0431 \\
+ &  & Structured Flow & 0.4930 & 0.5039 & 0.0476 & 0.01089 & 0.0486 \\
+ &  & Model-Free Flow & 0.4930 & 0.5047 & 0.0521 & 0.01170 & 0.0531 \\
+\midrule
+\textbf{Nonlinear Moderates} & 500 & Empirical & 0.7348 & 0.7374 & 0.1066 & 0.00254 & 0.1061 \\
+ &  & Ordered Probit & 0.7348 & 0.7234 & 0.1067 & -0.01141 & 0.1068 \\
+ &  & Ordered Logit & 0.7348 & 0.7364 & 0.1056 & 0.00159 & 0.1051 \\
+ &  & Structured Flow & 0.7348 & 0.7303 & 0.1255 & -0.00454 & 0.1250 \\
+ &  & Model-Free Flow & 0.7348 & 0.7386 & 0.0973 & 0.00373 & 0.0969 \\
+\cline{2-8}
+ & 1000 & Empirical & 0.7348 & 0.7516 & 0.0795 & 0.01678 & 0.0809 \\
+ &  & Ordered Probit & 0.7348 & 0.7337 & 0.0786 & -0.00111 & 0.0782 \\
+ &  & Ordered Logit & 0.7348 & 0.7421 & 0.0783 & 0.00730 & 0.0783 \\
+ &  & Structured Flow & 0.7348 & 0.7534 & 0.0952 & 0.01862 & 0.0966 \\
+ &  & Model-Free Flow & 0.7348 & 0.7437 & 0.0700 & 0.00885 & 0.0702 \\
+\cline{2-8}
+ & 2000 & Empirical & 0.7348 & 0.7408 & 0.0550 & 0.00596 & 0.0551 \\
+ &  & Ordered Probit & 0.7348 & 0.7248 & 0.0551 & -0.01001 & 0.0557 \\
+ &  & Ordered Logit & 0.7348 & 0.7345 & 0.0545 & -0.00028 & 0.0542 \\
+ &  & Structured Flow & 0.7348 & 0.7531 & 0.0677 & 0.01830 & 0.0698 \\
+ &  & Model-Free Flow & 0.7348 & 0.7407 & 0.0429 & 0.00592 & 0.0431 \\
+\midrule
+\textbf{Normal Linear} & 500 & Empirical & 0.4886 & 0.4660 & 0.0923 & -0.02259 & 0.0946 \\
+ &  & Ordered Probit & 0.4886 & 0.4889 & 0.0816 & 0.00029 & 0.0812 \\
+ &  & Ordered Logit & 0.4886 & 0.4865 & 0.0828 & -0.00206 & 0.0824 \\
+ &  & Structured Flow & 0.4886 & 0.4841 & 0.1060 & -0.00454 & 0.1055 \\
+ &  & Model-Free Flow & 0.4886 & 0.4949 & 0.0982 & 0.00625 & 0.0979 \\
+\cline{2-8}
+ & 1000 & Empirical & 0.4886 & 0.4690 & 0.0788 & -0.01964 & 0.0808 \\
+ &  & Ordered Probit & 0.4886 & 0.4883 & 0.0612 & -0.00030 & 0.0609 \\
+ &  & Ordered Logit & 0.4886 & 0.4819 & 0.0609 & -0.00675 & 0.0610 \\
+ &  & Structured Flow & 0.4886 & 0.4893 & 0.0650 & 0.00072 & 0.0646 \\
+ &  & Model-Free Flow & 0.4886 & 0.4903 & 0.0654 & 0.00166 & 0.0651 \\
+\cline{2-8}
+ & 2000 & Empirical & 0.4886 & 0.4734 & 0.0578 & -0.01517 & 0.0595 \\
+ &  & Ordered Probit & 0.4886 & 0.4857 & 0.0431 & -0.00293 & 0.0430 \\
+ &  & Ordered Logit & 0.4886 & 0.4810 & 0.0433 & -0.00757 & 0.0438 \\
+ &  & Structured Flow & 0.4886 & 0.4880 & 0.0523 & -0.00056 & 0.0520 \\
+ &  & Model-Free Flow & 0.4886 & 0.4899 & 0.0462 & 0.00130 & 0.0460 \\
+\midrule
+\textbf{Polarized Mixture} & 500 & Empirical & 0.4173 & 0.4059 & 0.0944 & -0.01140 & 0.0946 \\
+ &  & Ordered Probit & 0.4173 & 0.4293 & 0.0773 & 0.01198 & 0.0779 \\
+ &  & Ordered Logit & 0.4173 & 0.4116 & 0.0872 & -0.00564 & 0.0870 \\
+ &  & Structured Flow & 0.4173 & 0.4143 & 0.0270 & -0.00296 & 0.0270 \\
+ &  & Model-Free Flow & 0.4173 & 0.4205 & 0.0970 & 0.00328 & 0.0965 \\
+\cline{2-8}
+ & 1000 & Empirical & 0.4173 & 0.4154 & 0.0628 & -0.00183 & 0.0625 \\
+ &  & Ordered Probit & 0.4173 & 0.4383 & 0.0513 & 0.02103 & 0.0552 \\
+ &  & Ordered Logit & 0.4173 & 0.4211 & 0.0573 & 0.00378 & 0.0572 \\
+ &  & Structured Flow & 0.4173 & 0.4189 & 0.0185 & 0.00167 & 0.0185 \\
+ &  & Model-Free Flow & 0.4173 & 0.4244 & 0.0579 & 0.00716 & 0.0580 \\
+\cline{2-8}
+ & 2000 & Empirical & 0.4173 & 0.4164 & 0.0484 & -0.00090 & 0.0481 \\
+ &  & Ordered Probit & 0.4173 & 0.4342 & 0.0368 & 0.01693 & 0.0404 \\
+ &  & Ordered Logit & 0.4173 & 0.4165 & 0.0417 & -0.00073 & 0.0415 \\
+ &  & Structured Flow & 0.4173 & 0.4159 & 0.0121 & -0.00134 & 0.0121 \\
+ &  & Model-Free Flow & 0.4173 & 0.4211 & 0.0422 & 0.00381 & 0.0421 \\
+\midrule
+\textbf{Skewed Lognormal} & 500 & Empirical & 0.7278 & 0.6947 & 0.1068 & -0.03304 & 0.1112 \\
+ &  & Ordered Probit & 0.7278 & 0.7186 & 0.0546 & -0.00921 & 0.0551 \\
+ &  & Ordered Logit & 0.7278 & 0.7144 & 0.0498 & -0.01339 & 0.0513 \\
+ &  & Structured Flow & 0.7278 & 0.7286 & 0.0361 & 0.00078 & 0.0359 \\
+ &  & Model-Free Flow & 0.7278 & 0.7297 & 0.0428 & 0.00186 & 0.0426 \\
+\cline{2-8}
+ & 1000 & Empirical & 0.7278 & 0.6983 & 0.0795 & -0.02953 & 0.0844 \\
+ &  & Ordered Probit & 0.7278 & 0.7279 & 0.0417 & 0.00009 & 0.0414 \\
+ &  & Ordered Logit & 0.7278 & 0.7152 & 0.0365 & -0.01261 & 0.0384 \\
+ &  & Structured Flow & 0.7278 & 0.7308 & 0.0245 & 0.00297 & 0.0245 \\
+ &  & Model-Free Flow & 0.7278 & 0.7297 & 0.0298 & 0.00187 & 0.0297 \\
+\cline{2-8}
+ & 2000 & Empirical & 0.7278 & 0.7053 & 0.0582 & -0.02252 & 0.0622 \\
+ &  & Ordered Probit & 0.7278 & 0.7270 & 0.0351 & -0.00076 & 0.0350 \\
+ &  & Ordered Logit & 0.7278 & 0.7154 & 0.0309 & -0.01236 & 0.0332 \\
+ &  & Structured Flow & 0.7278 & 0.7304 & 0.0188 & 0.00263 & 0.0189 \\
+ &  & Model-Free Flow & 0.7278 & 0.7294 & 0.0230 & 0.00163 & 0.0230 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\clearpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Empirical Application Details & Full Tables}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\label{app:empirical}
+
+This section reports the full set of empirical results corresponding to the two applications discussed in Section~\ref{sec:application}: \citet{Tomz2020a} and \citet{Mattingly2025a}. Standard errors are calculated using $B=500$ bootstrap replications and are presented in parentheses.
+
+\subsection{\citet{Mattingly2025a}: Persuasive Effects of Authoritarian Propaganda}
+Table~\ref{tab:table_mattingly_empirical} reports the point estimates and bootstrapped standard errors for average marginal category-specific effects and cumulative effects across the five candidate estimators.
+
+\begin{table}[htbp]
+\centering
+\caption{Empirical Application Estimates: Support for Political Model \citep{Mattingly2025a}}
+\label{tab:table_mattingly_empirical}
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Metric / Category} & \textbf{Empirical} & \textbf{Ordered Probit} & \textbf{Ordered Logit} & \textbf{Structured Flow} & \textbf{Model-Free Flow} \\
+\midrule
+Wasserstein Unit & 1.073 (0.038) & 0.974 (0.048) & 0.986 (0.047) & 0.917 (0.116) & 1.011 (0.246) \\
+\midrule
+\multicolumn{6}{l}{\textit{Category Effects (AME)}} \\
+  Category 1 & -0.138 (0.011) & -0.171 (0.007) & -0.166 (0.006) & -0.113 (0.024) & -0.092 (0.050) \\
+  Category 2 & -0.135 (0.010) & -0.095 (0.006) & -0.113 (0.006) & -0.120 (0.012) & -0.137 (0.028) \\
+  Category 3 & -0.085 (0.013) & 0.015 (0.001)  & 0.013 (0.002)  & -0.055 (0.016) & -0.078 (0.015) \\
+  Category 4 & 0.152 (0.011)  & 0.071 (0.003)  & 0.086 (0.004)  & 0.098 (0.014)  & 0.063 (0.025) \\
+  Category 5 & 0.110 (0.009)  & 0.075 (0.004)  & 0.086 (0.004)  & 0.096 (0.014)  & 0.105 (0.022) \\
+  Category 6 & 0.097 (0.008)  & 0.105 (0.006)  & 0.094 (0.005)  & 0.094 (0.031)  & 0.139 (0.029) \\
+\midrule
+\multicolumn{6}{l}{\textit{Cumulative Effects}} \\
+  P(Y $\ge$ 2) & 0.138 (0.011) & 0.171 (0.007) & 0.166 (0.006) & 0.113 (0.024) & 0.092 (0.050) \\
+  P(Y $\ge$ 3) & 0.273 (0.013) & 0.266 (0.012) & 0.279 (0.012) & 0.233 (0.026) & 0.229 (0.074) \\
+  P(Y $\ge$ 4) & 0.359 (0.012) & 0.251 (0.013) & 0.267 (0.014) & 0.288 (0.023) & 0.307 (0.070) \\
+  P(Y $\ge$ 5) & 0.206 (0.010) & 0.180 (0.010) & 0.180 (0.010) & 0.190 (0.024) & 0.244 (0.049) \\
+  P(Y $\ge$ 6) & 0.097 (0.008) & 0.105 (0.006) & 0.094 (0.005) & 0.094 (0.031) & 0.139 (0.029) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{\citet{Tomz2020a}: Human Rights and Public Support for Intervention}
+Table~\ref{tab:table_tomz_empirical} reports the results for the replication of \citet{Tomz2020a}, indicating consistency across the parametric and flexible flow-based estimators.
+
+\begin{table}[htbp]
+\centering
+\caption{Empirical Application Estimates: Support for Strike \citep{Tomz2020a}}
+\label{tab:table_tomz_empirical}
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Metric / Category} & \textbf{Empirical} & \textbf{Ordered Probit} & \textbf{Ordered Logit} & \textbf{Structured Flow} & \textbf{Model-Free Flow} \\
+\midrule
+Wasserstein Unit & 0.513 (0.065) & 0.500 (0.058) & 0.507 (0.059) & 0.504 (0.107) & 0.509 (0.077) \\
+\midrule
+\multicolumn{6}{l}{\textit{Category Effects (AME)}} \\
+  Category 1 & 0.084 (0.017)  & 0.081 (0.009)  & 0.078 (0.009)  & 0.073 (0.018)  & 0.068 (0.018) \\
+  Category 2 & 0.068 (0.022)  & 0.065 (0.008)  & 0.071 (0.009)  & 0.080 (0.019)  & 0.092 (0.021) \\
+  Category 3 & 0.017 (0.020)  & 0.015 (0.002)  & 0.016 (0.002)  & 0.019 (0.017)  & 0.023 (0.019) \\
+  Category 4 & -0.061 (0.025) & -0.048 (0.006) & -0.053 (0.007) & -0.065 (0.022) & -0.084 (0.025) \\
+  Category 5 & -0.108 (0.022) & -0.113 (0.013) & -0.113 (0.013) & -0.106 (0.031) & -0.098 (0.024) \\
+\midrule
+\multicolumn{6}{l}{\textit{Cumulative Effects}} \\
+  P(Y $\ge$ 2) & -0.084 (0.017) & -0.081 (0.009) & -0.078 (0.009) & -0.073 (0.018) & -0.068 (0.018) \\
+  P(Y $\ge$ 3) & -0.152 (0.024) & -0.146 (0.017) & -0.150 (0.017) & -0.153 (0.032) & -0.160 (0.028) \\
+  P(Y $\ge$ 4) & -0.169 (0.025) & -0.161 (0.019) & -0.166 (0.019) & -0.172 (0.038) & -0.183 (0.027) \\
+  P(Y $\ge$ 5) & -0.108 (0.022) & -0.113 (0.013) & -0.113 (0.013) & -0.106 (0.031) & -0.098 (0.024) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\clearpage
+\bibliography{/Users/chanhyuk/Documents/MyLibrary}
+
+\end{document}
