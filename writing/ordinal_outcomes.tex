@@ -4,6 +4,8 @@
 \usepackage{paper}
 \usepackage{xcolor}
 \usepackage{tikz}
+\usepackage{xr}
+\externaldocument{ordinal_outcomes_appendix}
 
 
 % ----------------------------- Title & Author ------------------------------ %
@@ -279,9 +281,10 @@ Ordered response models remain the workhorses of applied political science becau
 
 The validity of these probability estimates, however, depends on the assumptions used to construct the conditional ordinal response distribution. Classical ordered response models impose two principal restrictions. First, the latent error distribution is assumed to belong to a fixed parametric family, typically normal or logistic. Second, the systematic component of the latent outcome is specified through a parametric single-index model. Together, these assumptions determine the shape of the conditional response distribution and therefore the estimated category probabilities.
 
-These assumptions are often reasonable, and when approximately correct ordered response models are statistically efficient. In many survey experiments, however, they may be difficult to justify. Political attitudes are frequently polarized or clustered, producing multimodal latent distributions. Ceiling and floor effects compress responses near the boundaries of Likert scales. Persuasive treatments may affect moderate respondents differently from strong supporters, generating nonlinear treatment-response relationships. Under such conditions, misspecification of either the latent error distribution or the systematic component may distort the estimated category probabilities that form the basis of substantive interpretation.
+When these assumptions are approximately correct ordered response models are statistically efficient. In many survey experiments, however, they may be difficult to justify. Political attitudes can be polarized or clustered, producing multimodal latent distributions. Ceiling and floor effects compress responses near the boundaries of Likert scales. Persuasive treatments may affect moderate respondents differently from strong supporters, generating nonlinear treatment-response relationships. Under such conditions, misspecification of either the latent error distribution or the systematic component may distort the estimated category probabilities that form the basis of substantive interpretation.
 
-A substantial literature has relaxed these assumptions. Generalized ordered response models allow threshold-specific effects, while semiparametric estimators relax the distributional assumption on the latent error distribution. Bayesian nonparametric approaches provide additional flexibility through hierarchical modeling. These methods represent important advances, but they typically relax only one component of the model or become computationally demanding in the presence of high-dimensional conditioning variables. The next subsection develops a unified framework that relaxes both sources of misspecification while preserving the likelihood-based structure of conventional ordered response models.
+A substantial literature has relaxed these assumptions. Generalized ordered response models \citep{Williams2006a} allow threshold-specific effects, while semiparametric estimators \citep{Klein1997a, Liu2024a} relax the distributional assumption on the latent error distribution. %Bayesian approaches provide additional flexibility through hierarchical modeling. 
+These methods represent important advances, but they typically relax only one component of the model or become computationally demanding in the presence of high-dimensional conditioning variables. The next subsection develops a unified framework that relaxes both sources of misspecification while preserving the likelihood-based structure of conventional ordered response models.
 
 \subsection{A Flexible Likelihood-Based Framework}
 \label{subsec:framework}
@@ -500,14 +503,12 @@ The simulation study and empirical applications that follow focus primarily on c
 \section{Monte Carlo Simulation}
 \label{sec:simulation}
 
-This section evaluates the finite-sample performance of the proposed estimation framework. The objective is not to demonstrate that flexible estimation universally outperforms classical ordered response models. Ordered logit and ordered probit remain statistically efficient when their assumptions are approximately satisfied. Instead, the simulations investigate the conditions under which flexible estimation of the conditional ordinal response distribution improves recovery of the distributional causal effects introduced in Section~\ref{subsec:estimands}. Throughout, causal identification is held fixed so that differences in performance arise solely from the estimation procedure.
-
 \subsection{Simulation Design}
 \label{subsec:sim_design}
 
 Each simulation begins by generating a synthetic population of one million observations from the latent-index model in Equation~\eqref{eq:latent}. The latent outcome is converted into an observed ordinal response through the threshold-crossing measurement model introduced in Section~\ref{subsec:setup}, with common reporting thresholds fixed across treatment conditions. The resulting population serves as the ground truth throughout the Monte Carlo experiment. Because the population is sufficiently large, the true category-specific and cumulative treatment effects can be computed with negligible Monte Carlo error before sampling begins. Consequently, all reported estimation error reflects finite-sample performance rather than uncertainty in the reference values.
 
-Treatment assignment is completely randomized, ensuring that the identification assumptions developed in Section~\ref{sec:causalordinal} hold by construction. For each data-generating process, I draw 100 independent random samples of sizes $n\in{500,1000,2000}$ from the population. Each sampled dataset is analyzed independently, and performance measures are aggregated across Monte Carlo replications.
+Treatment assignment is completely randomized, ensuring that the identification assumptions developed in Section~\ref{sec:causalordinal} hold by construction. For each data-generating process, I draw 100 independent random samples of sizes $n\in\{500,1000,2000\}$ from the population. Each sampled dataset is analyzed independently, and performance measures are aggregated across Monte Carlo replications.
 
 The simulation considers six data-generating processes designed to isolate different departures from the assumptions underlying classical ordered response models. Two benchmark settings generate latent errors from the normal and logistic distributions, under which ordered probit and ordered logit are correctly specified, respectively. The remaining settings introduce skewed latent errors, polarized (multimodal) latent attitudes, heteroskedastic latent errors, and nonlinear latent response functions. Together these scenarios represent empirical features frequently encountered in survey experiments while allowing the consequences of different modeling assumptions to be examined separately.
 

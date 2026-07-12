@@ -1,9 +1,11 @@
 %vim:foldmethod=marker
 \documentclass{article}
 \usepackage{natbib}
-\usepackage{paper} % Assumed custom style package from your local setup
+\usepackage{paper}
 \usepackage{xcolor}
 \usepackage{tikz}
+\usepackage{xr}
+\externaldocument{ordinal_outcomes}
 
 \renewcommand{\thesection}{\Alph{section}}
 \renewcommand{\thesubsection}{\Alph{section}.\arabic{subsection}}
@@ -90,154 +92,6 @@ This generalized formulation is fully compatible with both the semiparametric KD
 \section{Estimation Details and Proofs}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \label{app:estimation}
-
-\subsection{KDE-Based Ordinal Regression}
-\label{app:kde}
-
-This appendix provides details for the semiparametric KDE-based estimator. We first define the quasi-likelihood, then describe the kernel estimation of the error distribution and state a consistency result.
-
-\subsubsection{Model and Quasi-Likelihood}
-Recall the latent outcome model:
-$$
-Y_i^* = f(X_i,\beta) + D_i^\top\tau + \varepsilon_i,
-$$
-and the threshold-based reporting function:
-$$
-Y_i = j
-\quad\Longleftrightarrow\quad
-\alpha_{j-1} < Y_i^* \le \alpha_j,
-\qquad j = 0,1,\dots,J,
-$$
-with $-\infty = \alpha_{-1} < \alpha_0 < \dots < \alpha_J = \infty$. For notational simplicity, define the latent outcome index:
-$$
-V_i(\beta,\tau) = f(X_i,\beta) + D_i^\top\tau.
-$$
-Let $F$ denote the (unknown) CDF of $\varepsilon_i$. Conditional on $(X_i,D_i)$, the probability of observing category $j$ is:
-$$
-p_j(X_i,D_i;\alpha,\beta,\tau,F)
-= F\bigl( \alpha_j - V_i(\beta,\tau) \bigr)
-- F\bigl( \alpha_{j-1} - V_i(\beta,\tau) \bigr).
-$$
-If $F$ were known, the population log-likelihood would be:
-$$
-\ell(\alpha,\beta,\tau;F)
-= \mathbb{E} \left[
-\sum_{j=0}^J 1_{\{Y_i=j\}}
-\log p_j(X_i,D_i;\alpha,\beta,\tau,F)
-\right].
-$$
-In a sample of size $n$, the infeasible sample log-likelihood is:
-$$
-\ell_n(\alpha,\beta,\tau;F)
-= \frac{1}{n} \sum_{i=1}^n
-\sum_{j=0}^J 1_{\{Y_i=j\}}
-\log p_j(X_i,D_i;\alpha,\beta,\tau,F).
-$$
-When $F$ is unknown, we replace it with a nonparametric estimator $\hat{F}$ constructed via KDE, obtaining the \emph{quasi}-log-likelihood:
-$$
-\hat{\ell}_{n}(\alpha,\beta,\tau)
-= \frac{1}{n} \sum_{i=1}^n \hat{m}(X_i)
-\sum_{j=0}^J 1_{\{Y_i=j\}}
-\log \hat{p}_j(X_i,D_i;\alpha,\beta,\tau),
-$$
-where
-$$
-\hat{p}_{j}(X_i,D_i;\alpha,\beta,\tau)
-= \hat{F}\bigl( \alpha_j - V_i(\beta,\tau) \bigr)
-- \hat{F}\bigl( \alpha_{j-1} - V_i(\beta,\tau) \bigr),
-$$
-and $\hat{m}(X_i)$ is a trimming function that downweights observations in extreme regions of the covariate space where the KDE may be unstable. The KDE-based estimator $(\hat{\alpha},\hat{\beta},\hat{\tau})$ is defined as any maximizer of $\hat{\ell}_n(\alpha,\beta,\tau)$.
-
-\subsubsection{Kernel Estimation of the Error Distribution}
-To construct $\hat{F}$, we exploit the relationship between the distribution of the index $V_i$ and the error term $\varepsilon_i$. Let:
-$$
-g_1(v \mid Y \le j) = \text{density of } V \text{ given } Y \le j,
-\qquad
-g_0(v \mid Y > j) = \text{density of } V \text{ given } Y > j,
-$$
-and let:
-$$
-\pi_j = \mathbb{P}(Y_i \le j),
-\qquad
-1-\pi_j = \mathbb{P}(Y_i > j).
-$$
-Then, by Bayes' rule:
-$$
-\mathbb{P}(Y_i \le j \mid V_i = v)
-= \frac{ \pi_j  g_1(v \mid Y \le j) }{
-\pi_j  g_1(v \mid Y \le j)
-+ (1-\pi_j)  g_0(v \mid Y > j)
-}.
-$$
-Since $Y_i^* = V_i + \varepsilon_i$, and $Y_i \le j$ iff $Y_i^* \le \alpha_j$, we have:
-$$
-\mathbb{P}(Y_i \le j \mid V_i = v)
-= \mathbb{P}\bigl( \varepsilon_i \le \alpha_j - v \bigr)
-= F\bigl( \alpha_j - v \bigr).
-$$
-Thus, if we can estimate $\pi_j$, $g_1(\cdot)$, and $g_0(\cdot)$ from the data, we can construct an estimator $\hat{F}$ such that:
-$$
-\hat{F}(\alpha_j - v)
-\approx \widehat{\mathbb{P}}(Y_i \le j \mid V_i = v).
-$$
-
-The probabilities $\pi_j$ and $1-\pi_j$ can be estimated by sample proportions:
-$$
-\hat{\pi}_{j} = \frac{1}{n} \sum_{i=1}^n 1_{\{Y_i \le j\}},
-\qquad
-1-\hat{\pi}_{j} = \frac{1}{n} \sum_{i=1}^n 1_{\{Y_i > j\}}.
-$$
-The conditional densities $g_1$ and $g_0$ are estimated using KDE. For concreteness, suppose we use a univariate kernel $K(\cdot)$ (e.g., Gaussian) and bandwidths that may depend on $j$. Let $n_1(j) = \sum_{i=1}^n 1_{\{Y_i \le j\}}$ and $n_0(j) = \sum_{i=1}^n 1_{\{Y_i > j\}}$. Define the subsamples:
-$$
-\{V_i : Y_i \le j\}, \qquad \{V_i : Y_i > j\},
-$$
-and estimate the conditional densities as:
-$$
-\hat{g}_{1}(v \mid Y \le j)
-= \frac{1}{n_1(j) h_{1j}} \sum_{i: Y_i \le j}
-K\left( \frac{v - V_i}{h_{1j}} \right),
-$$
-$$
-\hat{g}_{0}(v \mid Y > j)
-= \frac{1}{n_0(j) h_{0j}} \sum_{i: Y_i > j}
-K\left( \frac{v - V_i}{h_{0j}} \right),
-$$
-where $h_{1j}$ and $h_{0j}$ are bandwidths chosen according to standard rules. Then, the estimated conditional probability is:
-$$
-\widehat{\mathbb{P}}(Y_i \le j \mid V_i = v)
-= \frac{ \hat{\pi}_j  \hat{g}_1(v \mid Y \le j) }{
-\hat{\pi}_j  \hat{g}_1(v \mid Y \le j)
-+ (1-\hat{\pi}_j)  \hat{g}_0(v \mid Y > j)
-}.
-$$
-We interpret this as an estimator of the CDF of $\varepsilon_i$ evaluated at $\alpha_j - v$:
-$$
-\hat{F}(\alpha_j - v)
-\equiv
-\widehat{\mathbb{P}}(Y_i \le j \mid V_i = v).
-$$
-
-In practice, the KDE is implemented with local smoothing and trimming to reduce boundary bias and instability in regions with sparse data. Following \citet{Abramson1982a} and \citet{Silverman1986a}, one can use pilot density estimates to define location-specific bandwidths and damping functions. We adopt these techniques, as in \citet{Klein2002a}, to ensure $\sqrt{n}$-consistency.
-
-\subsubsection{Consistency of the KDE-Based Estimator}
-This section sketches the main consistency result for the KDE-based estimator.
-
-\textbf{Assumption C.1} (Smoothness of the Index Distribution). 
-\textit{The conditional density of the index $V_i(\beta,\tau)$ given $(X_i,D_i)$ exists, is strictly positive on its support, and is continuously differentiable up to a sufficiently high order. The support of $V_i$ is compact or can be truncated to a compact set via trimming without affecting the asymptotic behavior of the estimator.}
-
-\textbf{Assumption C.2} (KDE Regularity Conditions). 
-\textit{The kernel $K(\cdot)$ is a bounded, symmetric density with compact support. Bandwidths $h_{1j}$ and $h_{0j}$ satisfy $h_{1j} \to 0$, $h_{0j} \to 0$, and $n h_{1j} \to \infty$, $n h_{0j} \to \infty$ as $n \to \infty$, with additional conditions ensuring the consistency of locally smoothed KDEs.}
-
-Under these conditions, the KDE estimators $\hat{g}_1$ and $\hat{g}_0$ converge uniformly to $g_1$ and $g_0$, and the estimated CDF $\hat{F}$ converges uniformly to the true $F$ on compact subsets of the support.
-
-\textbf{Theorem C.1} (Consistency of the KDE-Based Estimator). 
-\textit{Suppose the latent outcome model and threshold structure are correctly specified, and Assumptions C.1--C.2 hold. Then, as $n \to \infty$,}
-$$
-\bigl| (\hat{\alpha},\hat{\beta},\hat{\tau}) - (\alpha,\beta,\tau) \bigr| = o_p(1),
-$$
-\textit{up to an arbitrary positive affine transformation $(a + c\alpha, c\beta, c\tau)$ with $c>0$.}
-
-Because the ordinal model is identified only up to scale, we impose the error-variance normalization $\mathrm{Var}(\varepsilon_i)=1$ ex post by rescaling the coefficients using the estimated error variance $\hat{\sigma}_\varepsilon^2$.
 
 \subsection{Normalizing Flows}
 \label{app:flows}
@@ -328,7 +182,7 @@ $$
 \clearpage
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Comprehensive Simulation Details & Full Results}
+\section{Comprehensive Simulation Details \& Full Results}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \label{app:simulation}
 
@@ -376,8 +230,8 @@ We evaluate finite-sample performance across seven distinct DGPs. In each settin
 \end{enumerate}
 
 \subsection{Full Simulation Results Table}
-Table~\ref{tab:app_full_wasserstein} provides the complete simulation results evaluating the Wasserstein distance from the estimated conditional distribution to the true distribution across all sample sizes ($N \in \{500, 1000, 2000\}$).
 
+% tab:app_full_wasserstein {{{
 \begin{table}[ht]
 \centering
 \small
@@ -515,19 +369,23 @@ Table~\ref{tab:app_full_wasserstein} provides the complete simulation results ev
 \bottomrule
 \end{tabular}
 \end{table}
+% }}}
+
+Table~\ref{tab:app_full_wasserstein} provides the complete simulation results evaluating the Wasserstein distance from the estimated conditional distribution to the true distribution across all sample sizes ($N \in \{500, 1000, 2000\}$).
+
 
 \clearpage
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Empirical Application Details & Full Tables}
+\section{Empirical Application Details \& Full Tables}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \label{app:empirical}
 
 This section reports the full set of empirical results corresponding to the two applications discussed in Section~\ref{sec:application}: \citet{Tomz2020a} and \citet{Mattingly2025a}. Standard errors are calculated using $B=500$ bootstrap replications and are presented in parentheses.
 
 \subsection{\citet{Mattingly2025a}: Persuasive Effects of Authoritarian Propaganda}
-Table~\ref{tab:table_mattingly_empirical} reports the point estimates and bootstrapped standard errors for average marginal category-specific effects and cumulative effects across the five candidate estimators.
 
+% tab:table_mattingly_empirical {{{
 \begin{table}[htbp]
 \centering
 \caption{Empirical Application Estimates: Support for Political Model \citep{Mattingly2025a}}
@@ -556,10 +414,14 @@ Wasserstein Unit & 1.073 (0.038) & 0.974 (0.048) & 0.986 (0.047) & 0.917 (0.116)
 \bottomrule
 \end{tabular}
 \end{table}
+% }}}
+
+Table~\ref{tab:table_mattingly_empirical} reports the point estimates and bootstrapped standard errors for average marginal category-specific effects and cumulative effects across the five candidate estimators.
+
 
 \subsection{\citet{Tomz2020a}: Human Rights and Public Support for Intervention}
-Table~\ref{tab:table_tomz_empirical} reports the results for the replication of \citet{Tomz2020a}, indicating consistency across the parametric and flexible flow-based estimators.
 
+% tab:table_tomz_empirical {{{
 \begin{table}[htbp]
 \centering
 \caption{Empirical Application Estimates: Support for Strike \citep{Tomz2020a}}
@@ -586,8 +448,13 @@ Wasserstein Unit & 0.513 (0.065) & 0.500 (0.058) & 0.507 (0.059) & 0.504 (0.107)
 \bottomrule
 \end{tabular}
 \end{table}
+% }}}
+
+Table~\ref{tab:table_tomz_empirical} reports the results for the replication of \citet{Tomz2020a}, indicating consistency across the parametric and flexible flow-based estimators.
+
 
 \clearpage
+\bibliographystyle{apsr}
 \bibliography{/Users/chanhyuk/Documents/MyLibrary}
 
 \end{document}
