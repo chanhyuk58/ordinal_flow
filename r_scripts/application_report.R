@@ -133,7 +133,7 @@ export_empirical_figure <- function(data_path, output_filename, index_label = NA
       panel.grid.major.y = element_line(color = "#EAEAEA", linewidth = 0.3)
     )
   
-  ggsave(here("figures", output_filename), plot = p, width = 11, height = 5, device = "pdf")
+  ggsave(here("figures", output_filename), plot = p, width = 11, height = 4, device = "pdf")
 }
 
 # =====================================================================
