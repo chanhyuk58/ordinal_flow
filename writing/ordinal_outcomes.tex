@@ -52,7 +52,7 @@ The remainder of the paper proceeds as follows. Section~\ref{sec:causalordinal} 
 \section{Causal Inference with Ordinal Outcomes}
 \label{sec:causalordinal}
 
-This section develops the conceptual framework underlying the remainder of the paper. I begin by describing ordinal survey responses as measurements of an underlying latent attitude using the classical threshold-crossing model. I then revisit a well-known identification result showing that latent treatment effects are identified only up to location and scale, and discuss its implications for causal inference with ordinal outcomes. Finally, I introduce distributional causal estimands that are directly identified from observed ordinal responses and motivate the estimation framework developed in the next section.
+This section develops the conceptual framework underlying the remainder of the paper. I begin by describing ordinal survey responses as measurements of an underlying latent attitude using the classical threshold-crossing model. I then revisit a well-known identification result showing that latent treatment effects are identified only up to location and scale, and discuss its implications for causal inference with ordinal outcomes. To address this nonidentification, I define distributional causal estimands on the probability scale and prove their identification under standard causal assumptions. Finally, I use a toy example to demonstrate why traditional approaches that assign arbitrary numerical scores to ordinal categories can lead to severe inferential errors, including sign flips in the estimated treatment effect.
 
 \subsection{Latent Outcomes, Ordinal Responses, and Causal Effects}
 \label{subsec:setup}
@@ -60,60 +60,32 @@ This section develops the conceptual framework underlying the remainder of the p
 % fig:latent {{{
 \begin{figure}[ht]
 \centering
-\begin{tikzpicture}[>=stealth,scale=1]
-
-% Axis
-\draw[->,thick] (-5,0) -- (5.5,0) node[right] {$Y_i^\ast$};
-
-% Thresholds
-\foreach \x/\lab in {-3/$\alpha_0$,-1/$\alpha_1$,1/$\alpha_2$,3/$\alpha_3$}
-{
-    \draw[thick] (\x,-0.18) -- (\x,0.18);
-    \node[below] at (\x,-0.18) {\lab};
-}
-
-% Categories
-\node at (-4,0.55) {\small SD};
-\node at (-2,0.55) {\small D};
-\node at (0,0.55) {\small N};
-\node at (2,0.55) {\small A};
-\node at (4,0.55) {\small SA};
-
-% Latent distribution
-\draw[thick,blue]
-plot[smooth]
-coordinates{
-(-4.5,0)
-(-3.8,.25)
-(-3,.55)
-(-2,.95)
-(-1,1.3)
-(0,1.55)
-(1,1.35)
-(2,.95)
-(3,.45)
-(4,.12)
-};
-
-% Treatment shift
-\draw[thick,red,dashed]
-plot[smooth]
-coordinates{
-(-3.7,0)
-(-3,.18)
-(-2,.42)
-(-1,.78)
-(0,1.15)
-(1,1.55)
-(2,1.45)
-(3,1.0)
-(4,.45)
-(5,.1)
-};
-
-\node[blue] at (-1.2,1.7) {\small Control};
-\node[red] at (2.0,1.75) {\small Treatment};
-
+\begin{tikzpicture}[x=1cm,y=2.0cm]
+  % Draw x-axis
+  \draw[->,thick] (-5,0)--(5.2,0) node[right] {$Y_i^*$};
+  
+  % Draw thresholds (2 thresholds for 3 categories)
+  \draw[thick] (-2,-.15)--(-2,.15) node[below=20pt] {$\alpha_1$};
+  \draw[thick] (2,-.15)--(2,.15) node[below=20pt] {$\alpha_2$};
+  
+  % Category labels at the top
+  \node[above,font=\small] at (-3.3,-0.75) {Category 1};
+  \node[above,font=\small] at (0,-0.75) {Category 2};
+  \node[above,font=\small] at (3.3,-0.75) {Category 3};
+  
+  % Control curve (wider)
+  \draw[thick, blue] plot[smooth] coordinates {
+    (-4.50,0.04) (-3.86,0.09) (-3.21,0.19) (-2.57,0.34) (-1.93,0.53) (-1.29,0.73) (-0.64,0.88) (0.00,0.94) (0.64,0.88) (1.29,0.73) (1.93,0.53) (2.57,0.34) (3.21,0.19) (3.86,0.09) (4.50,0.04)
+  };
+  
+  % Treatment curve (narrower, higher peak)
+  \draw[thick,dashed, red] plot[smooth] coordinates {
+    (-4.50,0.00) (-3.86,0.00) (-3.21,0.00) (-2.57,0.03) (-1.93,0.13) (-1.29,0.44) (-0.64,0.97) (0.00,1.40) (0.64,1.34) (1.29,0.84) (1.93,0.35) (2.57,0.10) (3.21,0.02) (3.86,0.00) (4.50,0.00)
+  };
+  
+  % Text labels for curves
+  \node[above, blue] at (-2.4,0.6) {Control};
+  \node[above, red] at (2.4,0.9) {Treatment};
 \end{tikzpicture}
 
 \caption{Ordinal responses arise by partitioning an underlying latent attitude into ordered response categories. The observed data identify how treatment changes probabilities of falling into response categories, but not the absolute scale of the latent attitude.}
@@ -261,6 +233,39 @@ The discussion above highlights an important feature of distributional causal in
 P(Y_i=j\mid D_i,X_i),
 \]
 from which a wide range of causal quantities can be obtained. Category-specific treatment effects and cumulative treatment effects are the primary estimands considered in this paper because they are directly interpretable and commonly reported in applied political science. More generally, however, any functional of the estimated response distributions may be calculated after estimation, including global measures of distributional change such as the one-dimensional Wasserstein (earth mover's) distance. Consequently, the statistical problem addressed in the remainder of this paper is estimation of the conditional ordinal response distribution rather than any single causal summary.
+
+\subsection{Why Cardinalization Fails: A Sign-Flip Toy Example}
+\label{subsec:sign_flip}
+
+While Section~\ref{subsec:estimands} established that probability-based effects like $\Delta_j$ are robustly identified and ordinally invariant, in applied political methodology, researchers commonly attempt to compress these category-specific differences into a single summary measure by assigning an arbitrary sequence of numerical scores $c(1) < c(2) < \dots < c(J)$ to the ordered categories and estimating the mean treatment effect on this constructed scale. Under this approach, the target quantity of interest is defined as:
+\begin{equation}
+  \tau_c = \mathbb{E}\left[c(Y_i(1)) - c(Y_i(0))\right] = \sum_{j=1}^J c(j)\Delta_j.
+\label{eq:cardinalized_ate}
+\end{equation}
+
+While this scoring approach is simple to implement, the scale nonidentification established in Theorem~1 implies that the choice of $c(\cdot)$ is fundamentally arbitrary. Any strictly monotone transformation of the scores preserves the observed ordinal ranking of the respondents but alters the cardinal distances between categories. Consequently, both the magnitude and, crucially, the \emph{sign} of the cardinalized treatment effect $\tau_c$ are not ordinally identified. 
+
+To see how easily arbitrary cardinalization can distort causal conclusions, consider a toy example with three ordered response categories (e.g., \textit{Disagree}, \textit{Neutral}, \textit{Agree}). Suppose that a treatment redistributes probability mass across these categories such that the differences in potential outcome probabilities are given by:
+\[
+(\Delta_1, \Delta_2, \Delta_3) = (-0.15, \; 0.25, \; -0.10).
+\]
+This probability difference vector is mathematically well-defined and sums to zero, representing a treatment that shifts respondents away from the extreme categories (reducing Category 1 by 15 percentage points and Category 3 by 10 percentage points) and concentrates them in the moderate Category 2 (increasing it by 25 percentage points).
+
+Now consider two different, strictly monotone, and equally admissible numerical codings that both start from 1:
+\begin{itemize}
+  \item \textbf{Coding A (Linear):} $c_A = (1, 2, 3)$, which assumes equal spacing between adjacent categories.
+  \item \textbf{Coding B (Right-Stretched):} $c_B = (1, 2, 6)$, which assumes that the distance between Category 2 and Category 3 is much larger than the distance between Category 1 and Category 2.
+\end{itemize}
+
+Substituting these codings into Equation~\eqref{eq:cardinalized_ate} yields two diametrically opposed conclusions:
+\begin{align*}
+  \tau_{c_A} &= 1 \cdot (-0.15) + 2 \cdot (0.25) + 3 \cdot (-0.10) = \mathbf{+0.05}, \\
+  \tau_{c_B} &= 1 \cdot (-0.15) + 2 \cdot (0.25) + 6 \cdot (-0.10) = \mathbf{-0.25}.
+\end{align*}
+
+Under Coding A, the estimated treatment effect is positive ($+0.05$), suggesting that the treatment, on average, increases support or shifts attitudes in a positive direction. Under Coding B, however, the estimated treatment effect is negative ($-0.25$), leading a researcher to conclude that the treatment decreases support on average. 
+
+Crucially, both analyses are performed on the exact same observed distribution of ordinal responses. This sign flip is not a consequence of small sample sizes, statistical noise, or poor measurement; rather, it is a fundamental identification failure. Because ordinal data carry no information about the true spacing between categories, any choice of numerical scores imposes an untestable cardinal assumption. If different plausible assumptions yield opposite conclusions, then any causal claim based on the cardinalized mean is scientifically fragile. This arbitrariness strongly motivates the shift toward distributional causal estimands that do not rely on cardinalization.
 
 
 \section{Flexible Estimation of Ordinal Response Distributions}
@@ -522,37 +527,37 @@ Performance is evaluated using bias, absolute bias, and root mean squared error 
 
 \begin{figure}
   \begin{center}
-  \includegraphics[width=0.95\textwidth]{../figures/fig_app_normal_linear_N1000.pdf}
+  \includegraphics[width=0.95\textwidth]{../figures/fig_app_normal_linear_N2000.pdf}
   \end{center}
   \caption{Single Index Model with Normal Error}\label{fig:baseline}
   \vspace{0.5em}
   \footnotesize
   \begin{flushleft}
-  \textit{Note:} This figure reports the estimated category-specific treatment effects with the corresponding population quantities. Points denote Monte Carlo averages across 100 replications, error bars indicate 95\% Monte Carlo confidence intervals, and the horizontal line marks the true population treatment effect.
+  \textit{Note:} This figure reports the estimated category-specific treatment effects with the corresponding population quantities when $n = 2000$. Points denote Monte Carlo averages across 100 replications, error bars indicate 95\% Monte Carlo confidence intervals, and the horizontal line marks the true population treatment effect.
   \end{flushleft}
 \end{figure}
 
 \begin{figure}
   \begin{center}
-  \includegraphics[width=0.95\textwidth]{../figures/fig_polarized_mixture_N1000.pdf}
+  \includegraphics[width=0.95\textwidth]{../figures/fig_polarized_mixture_N2000.pdf}
   \end{center}
   \caption{Single Index Model with Bimodal Error}\label{fig:polarized}
   \vspace{0.5em}
   \footnotesize
   \begin{flushleft}
-  \textit{Note:} This figure reports the estimated category-specific treatment effects with the corresponding population quantities. Points denote Monte Carlo averages across 100 replications, error bars indicate 95\% Monte Carlo confidence intervals, and the horizontal line marks the true population treatment effect.
+  \textit{Note:} This figure reports the estimated category-specific treatment effects with the corresponding population quantities when $n = 2000$. Points denote Monte Carlo averages across 100 replications, error bars indicate 95\% Monte Carlo confidence intervals, and the horizontal line marks the true population treatment effect.
   \end{flushleft}
 \end{figure}
 
 \begin{figure}
   \begin{center}
-  \includegraphics[width=0.95\textwidth]{../figures/fig_heteroskedastic_N1000.pdf}
+  \includegraphics[width=0.95\textwidth]{../figures/fig_heteroskedastic_N2000.pdf}
   \end{center}
   \caption{Single Index Model with heteroskedastic Error}\label{fig:heteroskedastic}
   \vspace{0.5em}
   \footnotesize
   \begin{flushleft}
-  \textit{Note:} This figure reports the estimated category-specific treatment effects with the corresponding population quantities. Points denote Monte Carlo averages across 100 replications, error bars indicate 95\% Monte Carlo confidence intervals, and the horizontal line marks the true population treatment effect.
+  \textit{Note:} This figure reports the estimated category-specific treatment effects with the corresponding population quantities when $n = 2000$. Points denote Monte Carlo averages across 100 replications, error bars indicate 95\% Monte Carlo confidence intervals, and the horizontal line marks the true population treatment effect.
   \end{flushleft}
 \end{figure}
 
@@ -608,10 +613,10 @@ This application illustrates an important point. Flexible estimation is not inte
 \subsection{\citet{Mattingly2025a}: Authoritarian Propaganda and Public Opinion}
 \label{subsec:mattingly}
 
-I next revisit the survey experiment of \citet{Mattingly2025a}, which investigates the persuasive effects of authoritarian propaganda on public opinion. Respondents were randomly assigned to different informational treatments and subsequently evaluated the target using a six-category ordinal response scale. As in the previous application, the original analysis relied on conventional ordinal response methods to summarize treatment effects.
+I next apply the flexible estimation framework to the survey experiment conducted by \citet{Mattingly2025a}, which examines the persuasive power of authoritarian state media on foreign public opinion. In this study, respondents are exposed to Chinese state propaganda and subsequently asked to report their relative preference for the United States' versus Chinese political system on a six-category ordinal scale, ranging from \emph{Strongly Prefer the US Political System} (Category 1) to \emph{Strongly Prefer Chinese Political System} (Category 6). Standard empirical practice in this literature relies on ordered probit and logit models to estimate these persuasive treatment effects. 
 
 
-\begin{figure}
+\begin{figure}[ht]
   \begin{center}
   \includegraphics[width=0.95\textwidth]{../figures/fig_mattingly_empirical.pdf}
   \end{center}
@@ -623,11 +628,9 @@ I next revisit the survey experiment of \citet{Mattingly2025a}, which investigat
   \end{flushleft}
 \end{figure}
 
-Figure~\ref{fig:mattingly_empirical} presents the estimated category-specific treatment effects across the five estimators. Unlike the Tomz application, the estimated effects now exhibit substantial disagreement across modeling assumptions. The empirical estimator, ordered probit, ordered logit, and the two flow-based estimators produce noticeably different estimates for several response categories, particularly in the middle and upper portions of the ordinal scale. While all methods identify a positive treatment effect, they imply different patterns of movement across response categories and therefore different substantive interpretations of how the treatment changes respondents’ opinions.
+As shown in Figure~\ref{fig:mattingly_empirical}, while all five estimators agree on the positive overall direction of the treatment effect, they diverge on how this probability mass is distributed across the response categories. The standard parametric ordered probit and logit models estimate larger treatment effects in the extreme categories, particularly at the upper tail of the distribution (\emph{Strongly Prefer Chinese System}). In contrast, the flexible flow-based estimators estimate smaller effects at the extremes and suggest that the persuasive impact of the propaganda is primarily concentrated in the intermediate categories.
 
-The disagreement among estimators is not uniform across the response distribution. Rather than differing in the overall direction of the treatment effect, the models primarily disagree about how probability mass is redistributed across adjacent response categories. Relative to ordered probit and ordered logit, the structured flow estimator attributes more of the treatment effect to movement among the intermediate response categories while assigning less probability to shifts concentrated in the upper tail of the distribution. By contrast, the estimated effects for the extreme response categories are comparatively similar across methods. The fully model-free specification exhibits a broadly similar pattern but with wider confidence intervals, reflecting the additional uncertainty associated with estimating the systematic component nonparametrically. These results closely mirror the simulation findings, suggesting that retaining the latent-index structure while flexibly modeling the latent error distribution provides a better balance between robustness and statistical efficiency than either fully parametric or fully nonparametric estimation.
-
-This application illustrates the practical value of flexible distributional modeling. The differences among estimators do not arise because the causal effect itself is unidentified. Rather, they arise because different assumptions about the latent response distribution imply different estimates of the conditional ordinal response probabilities. When the parametric assumptions underlying ordered response models are difficult to justify, these differences may be large enough to alter substantive conclusions about where in the response distribution the treatment has its greatest impact.
+This divergence stems from the tail properties of the assumed error distributions. Standard parametric ordered models impose symmetric, rigid tails, meaning that a shift in the latent index must translate into a proportional change in the extreme categories. The conditional normalizing flow relaxes this restriction, allowing the shape of the error distribution to be learned from the data. Substantively, this shifts the interpretation of the propaganda's effect. Rather than suggesting a substantial conversion of respondents into extreme supporters of China, the flexible models indicate that the treatment's primary impact is to shift moderate respondents into intermediate, neutral, or moderate categories. This demonstrates how parametric tail constraints can influence substantive interpretations of where in the response distribution a treatment has its primary impact.
 
 \section{Conclusion}
 \label{sec:conclusion}
