@@ -134,11 +134,11 @@ The threshold-crossing framework provides a useful representation of ordinal out
 To formalize this point, suppose the latent outcome satisfies
 
 \begin{equation}
-  Y_i^\ast = h_{\theta}(X_i) + D_i^\top\tau + \varepsilon_i,
+  Y_i^\ast = h(X_i) + D_i^\top\tau + \varepsilon_i,
 \label{eq:latent}
 \end{equation}
 
-where $h(X_i,\beta)$ denotes the systematic component of the latent outcome, $\tau$ is the treatment effect on the latent scale, and $\varepsilon_i$ has cumulative distribution function $F$. Combining this latent-index specification with the threshold-crossing measurement model implies
+where $h(X_i)$ denotes the systematic component of the latent outcome, $\tau$ is the treatment effect on the latent scale, and $\varepsilon_i$ has cumulative distribution function $F$. I sometimes use $m(X_{i}, D_{i})$ to denote the whole systematic linear structure $h(X_{i}) + D^{\top}_{i}\tau $ Combining this latent-index specification with the threshold-crossing measurement model implies
 
 \[
 \begin{aligned}
@@ -286,17 +286,20 @@ Ordered response models remain the workhorses of applied political science becau
 
 The validity of these probability estimates, however, depends on the assumptions used to construct the conditional ordinal response distribution. Classical ordered response models impose two principal restrictions. First, the latent error distribution is assumed to belong to a fixed parametric family, typically normal or logistic. Second, the systematic component of the latent outcome is specified through a parametric single-index model. Together, these assumptions determine the shape of the conditional response distribution and therefore the estimated category probabilities.
 
-When these assumptions are approximately correct ordered response models are statistically efficient. In many survey experiments, however, they may be difficult to justify. Political attitudes can be polarized or clustered, producing multimodal latent distributions. Ceiling and floor effects compress responses near the boundaries of Likert scales. Persuasive treatments may affect moderate respondents differently from strong supporters, generating nonlinear treatment-response relationships. Under such conditions, misspecification of either the latent error distribution or the systematic component may distort the estimated category probabilities that form the basis of substantive interpretation.
+When these assumptions are approximately correct, ordered response models are statistically efficient. In many survey experiments, however, they may be difficult to justify. Political attitudes can be polarized or clustered, producing multimodal latent distributions. Ceiling and floor effects compress responses near the boundaries of Likert scales. Persuasive treatments may affect moderate respondents differently from strong supporters, generating nonlinear treatment-response relationships. Under such conditions, misspecification of either the latent error distribution or the systematic component may distort the estimated category probabilities that form the basis of substantive interpretation.
 
-A substantial literature has relaxed these assumptions. Generalized ordered response models \citep{Williams2006a} allow threshold-specific effects, while semiparametric estimators \citep{Klein1997a, Liu2024a} relax the distributional assumption on the latent error distribution. %Bayesian approaches provide additional flexibility through hierarchical modeling. 
-These methods represent important advances, but they typically relax only one component of the model or become computationally demanding in the presence of high-dimensional conditioning variables. The next subsection develops a unified framework that relaxes both sources of misspecification while preserving the likelihood-based structure of conventional ordered response models.
+A substantial literature has relaxed these assumptions. Generalized ordered response models \citep{Williams2006a} allow threshold-specific effects, while semiparametric estimators \citep{Klein1997a, Liu2024a} relax the distributional assumption on the latent error distribution. These methods represent important advances, but they typically relax only one component of the model or become computationally demanding in the presence of high-dimensional conditioning variables. 
+
+The simplest alternative to parametric ordered models is the fully nonparametric empirical frequency estimator, which computes category probabilities directly from observed sample proportions in each treatment arm. Under perfect randomization, this empirical estimator is asymptotically unbiased and consistent. However, this robust nonparametric property comes at a severe cost in finite samples. First, because it cannot easily incorporate baseline covariates $X_i$, it sacrifices the substantial efficiency and precision gains that regression-based adjustment offers. Second, in small samples or when analyzing outcomes with rare categories, the empirical estimator is highly vulnerable to sparse-data and if a category receives zero responses in a given treatment. Finally, in observational studies where baseline covariates must be controlled to satisfy ignorability, the simple empirical difference is biased due to confounding.
 
 \subsection{A Flexible Likelihood-Based Framework}
 \label{subsec:framework}
 
-The preceding discussion suggests that the objective is not simply to replace the normal or logistic error distribution with a more flexible alternative. Rather, the goal is to estimate the conditional ordinal response distribution while preserving the probabilistic structure that makes ordered response models attractive. An ideal estimator should satisfy four properties. It should remain likelihood-based, accommodate high-dimensional conditioning variables, recover the full conditional response distribution, and permit varying degrees of structural modeling according to substantive knowledge.
+The preceding discussion suggests that the objective is not simply to replace the normal or logistic error distribution with a more flexible alternative. Rather, the goal is to estimate the conditional ordinal response distribution while preserving the probabilistic structure that makes ordered response models attractive. 
 
-The proposed framework retains the latent outcome representation in Equation~\eqref{eq:latent} but generalizes how its components are modeled. Recall that the latent outcome consists of two parts: the systematic component $h(\cdot)$ and the latent error distribution $F$. Existing estimators correspond to particular choices of these two components. Ordered logit and ordered probit specify both parametrically, whereas semiparametric estimators typically relax only the latent error distribution.
+The proposed Conditional Normalizing Flow (CNF) framework bridges this gap, positioning itself as an optimal compromise on the efficiency-robustness frontier. Like standard parametric models, the CNF retains high statistical efficiency and finite-sample stability: it can explicitly models the systematic component $m(X_i, D_i)$ to leverage covariate-driven precision gains, and utilizes the ordered threshold-crossing structure to borrow strength across adjacent categories, mitigating sparse-data and zero-cell issues. At the same time, like the empirical frequency estimator, the CNF remains robust to distributional misspecification by learning the shape of the latent error distribution $F(\cdot)$ directly from the data. The resulting estimator thus combines the covariate-adjustment and smoothing advantages of parametric regression with the distributional flexibility of nonparametric frequency estimators.
+
+Under this unified framework, the latent outcome representation in Equation~\eqref{eq:latent} is preserved, but we generalize how its individual components are modeled. Recall that the latent outcome consists of two parts: the systematic component $m(X_i, D_i)$ and the latent error distribution $F(\cdot)$. Existing estimators correspond to restrictive choices of these two components. Ordered logit and ordered probit specify both parts parametrically, whereas semiparametric estimators typically relax only the latent error distribution.
 
 The proposed framework allows flexibility in either or both components while retaining a common likelihood-based estimation procedure. When substantive theory suggests that treatment and covariates operate through a common latent index, the systematic component may be specified parametrically while the latent error distribution is estimated flexibly. This specification may be viewed as a semiparametric generalization of ordered response models. Alternatively, when the functional relationship between covariates and the latent outcome is itself uncertain, the systematic component may also be estimated nonparametrically. In this way, the same estimation framework spans classical latent-index models, semiparametric ordered response models, and fully flexible conditional distribution estimators without requiring different inferential procedures.
 
@@ -305,12 +308,11 @@ The framework is implemented using conditional normalizing flows to model unknow
 A particularly attractive feature of ordinal response models is that the latent error is scalar. Combined with monotone normalizing flows, this permits exact evaluation of both the latent density and its cumulative distribution function. Consequently, the threshold-crossing likelihood can be evaluated exactly without numerical integration, allowing the proposed estimator to remain computationally tractable while flexibly modeling the latent error distribution.
 
 
-
 \subsection{Modeling the Latent Error Distribution with Normalizing Flows}
 \label{subsec:flow}
 
 % fig:nf_error {{{
-\begin{figure}[ht]
+\begin{figure}[hb!]
 \vspace{1cm}
 \centering
 \begin{tikzpicture}[>=stealth,scale=1]
@@ -407,8 +409,6 @@ A conditional normalizing flow transforms a simple base distribution into a flex
 \end{flushleft}
 \end{figure}
 % }}}
-
-The proposed framework replaces the fixed parametric latent error distribution with a flexible conditional density estimator. Rather than assuming that the latent error follows a standard normal or logistic distribution, I estimate its conditional distribution directly from the data while retaining exact likelihood-based inference.
 
 Normalizing flows provide a natural framework for this task. Originally introduced by \citet{Rezende2016a}, normalizing flows represent an unknown probability distribution through a sequence of invertible transformations of a simple base distribution. Because each transformation is invertible, probability densities remain analytically tractable through the change-of-variables formula, allowing estimation to proceed by maximum likelihood. Since their introduction, normalizing flows have become a standard approach for flexible likelihood-based density estimation \citep{Kobyzev2021a, Papamakarios2021a}.
 
