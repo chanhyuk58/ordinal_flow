@@ -115,134 +115,136 @@
 % =========================================================================
 \begin{column}{\colwidth}
 
-\begin{block}{Motivation and Target Estimands}
+\begin{block}{Latent Traits and Ordinal Measurement}
 \justifying
-Ordinal responses encode rankings, but not distances between categories. Assigning scores and estimating a mean difference therefore adds an untestable measurement assumption.
+\begin{itemize}
+  \item Political science wants to evaluate causal effects on continuous, latent traits $Y_i^*$ (e.g., support for policies, trust in institutions) 
+  \item However, we routinely observe observed, ordinal survey indicators $Y_i \in \{1, \dots, J\}$ (e.g., a Likert scale).
+\end{itemize}
 
-\vspace{0.45em}
-\keybox{Target causal effects on the observed response distribution, \\ not coefficients on an arbitrary latent scale.}
+\vspace{0.3cm}
+\textbf{Notation and Variables:}
+\begin{itemize}\setlength\itemsep{0.15em}
+  \item $D_i \in \{0, 1\}$: Binary treatment indicator.
+  \item $X_i$: Vector of baseline covariates.
+  \item $m(X_i, D_i)$: Systematic latent index model \\ (under a linear model, $m(X_i, D_i) = \tau D_i + X_i^\top \beta$, where $\tau$ represents the latent treatment effect).
+  \item $\epsilon_i$: Latent error term with CDF $F(\cdot)$.
+  \item $\alpha$: Vector of thresholds in a latent space.
+\end{itemize}
 
-\vspace{0.5em}
-For response category $j=1,\ldots,J$, define
+\vspace{0.3em}
+We can write the model in latent space as:
 \[
-\pi_j(d)=\Pr\{Y_i(d)=j\},
-\qquad
-\Delta_j=\pi_j(1)-\pi_j(0).
+Y_i^* = m(X_i, D_i) + \epsilon_i
 \]
-Cumulative effects are
+We observe $Y_i$ via a threshold-crossing mechanism partitioning the latent scale:
 \[
-\Delta_{\ge j}=\Pr\{Y_i(1)\ge j\}-\Pr\{Y_i(0)\ge j\}.
+Y_i=j \iff \alpha_{j-1}<Y_i^*\le \alpha_j, \qquad j=1,\dots,J
 \]
-These quantities are invariant to admissible transformations of the latent scale.
-\end{block}
 
-\begin{block}{Single-Index Representation}
-\justifying
-Observed categories arise from a threshold-crossing model with latent outcome $Y_i^*$:
-\[
-Y_i=j \iff \alpha_{j-1}<Y_i^*\le \alpha_j,
-\qquad
-Y_i^*=\tau D_i+h(X_i)+\varepsilon_i.
-\]
-The coefficient $\tau$ shifts a latent index, but its magnitude depends on location and scale normalizations. It is not itself an observed-scale causal effect.
-
-\vspace{0.35em}
+  \vspace{0.5cm}
+  % latent {{{
 \begin{center}
-\begin{tikzpicture}[x=2.2cm,y=3.2cm,>=Latex]
+\begin{tikzpicture}[x=2cm,y=2cm,>=Latex]
   % Draw x-axis
-  \draw[->,thick] (-5,0)--(5.2,0) node[right] {$Y_i^*$};
-  
+  \draw[->,thick] (-4.8,0)--(4.8,0) node[right] {$Y_i^*$};
+
   % Draw thresholds (2 thresholds for 3 categories)
-  \draw[thick] (-2,-.15)--(-2,.15) node[below=20pt] {$\alpha_1$};
-  \draw[thick] (2,-.15)--(2,.15) node[below=20pt] {$\alpha_2$};
-  
+  \draw[thick] (-2,-.12)--(-2,.12) node[below=3pt] {$\alpha_1$};
+  \draw[thick] (2,-.12)--(2,.12) node[below=3pt] {$\alpha_2$};
+
   % Category labels at the top
-  \node[above,font=\small] at (-3.3,-0.75) {Category 1};
-  \node[above,font=\small] at (0,-0.75) {Category 2};
-  \node[above,font=\small] at (3.3,-0.75) {Category 3};
-  
+  \node[below=18pt,font=\small,color=PosterDark] at (-3.25,0) {Category 1};
+  \node[below=18pt,font=\small,color=PosterDark] at (0,0) {Category 2};
+  \node[below=18pt,font=\small,color=PosterDark] at (3.25,0) {Category 3};
+
   % Control curve (wider)
   \draw[thick,WashUGreen] plot[smooth] coordinates {
     (-4.50,0.04) (-3.86,0.09) (-3.21,0.19) (-2.57,0.34) (-1.93,0.53) (-1.29,0.73) (-0.64,0.88) (0.00,0.94) (0.64,0.88) (1.29,0.73) (1.93,0.53) (2.57,0.34) (3.21,0.19) (3.86,0.09) (4.50,0.04)
   };
-  
+
   % Treatment curve (narrower, higher peak)
   \draw[thick,WashURed,dashed] plot[smooth] coordinates {
     (-4.50,0.00) (-3.86,0.00) (-3.21,0.00) (-2.57,0.03) (-1.93,0.13) (-1.29,0.44) (-0.64,0.97) (0.00,1.40) (0.64,1.34) (1.29,0.84) (1.93,0.35) (2.57,0.10) (3.21,0.02) (3.86,0.00) (4.50,0.00)
   };
-  
+
   % Text labels for curves
-  \node[WashUGreen,above] at (-2.4,0.6) {Control};
-  \node[WashURed,above] at (1.4,0.9) {Treatment};
+  \node[WashUGreen,above] at (-2.2,0.65) {Control};
+  \node[WashURed,above] at (2,1.0) {Treatment};
 \end{tikzpicture}
 \end{center}
+% }}}
 \end{block}
 
-\begin{block}{Why Cardinalization Does Not Identify the Effect}
+
+\begin{block}{Why Cardinalization Fails (Toy Example: The Sign Flips)}
 \justifying
-Let $c(1)<\cdots<c(J)$ be any numerical coding of the categories. The corresponding mean effect is
+A common approach is to assign arbitrary numerical scores $c(j)$ to the categories. The cardinalized treatment effect is then the difference in expected values:
 \[
-\tau_c
-=\mathbb E[c(Y_i(1))-c(Y_i(0))]
-=\sum_{j=1}^J c(j)\Delta_j.
+\tau_c = \mathbb E[c(Y_i(1)) - c(Y_i(0))] = \sum_{j=1}^J c(j) \left[ \Pr(Y_i(1) = j) - \Pr(Y_i(0) = j) \right].
 \]
-Because ordinal data do not identify the spacing in $c(\cdot)$, neither the magnitude nor, in general, the sign of $\tau_c$ is ordinally identified.
 
-\vspace{0.35em}
-\assumptionbox{Cardinalization result}{Different monotone codings can imply different causal conclusions while preserving exactly the same observed ordering.}
-\end{block}
-
-\begin{block}{Toy Example: The Sign Flips}
-Suppose treatment redistributes probability across three ordered categories:
+Suppose treatment redistributes the probability distribution across three ordered categories from Control to Treatment as follows:
 \[
-(\Delta_1,\Delta_2,\Delta_3)=(-0.15,\;0.25,\;-0.10).
+\Pr(Y_i(0) = j) = (0.30, \; 0.40, \; 0.30) \quad \longrightarrow \quad \Pr(Y_i(1) = j) = (0.15, \; 0.65, \; 0.20).
 \]
-Then two admissible codings yield opposite signs:
+
+Then two strictly monotone codings starting from 1 yield opposite signs:
 \[
 \begin{aligned}
  c_A=(1,2,3):\quad &\tau_{c_A}= 1 \cdot (-0.15) + 2 \cdot 0.25 + 3 \cdot (-0.10) =\mathbf{+0.05},\\
  c_B=(1,2,6):\quad &\tau_{c_B}= 1 \cdot (-0.15) + 2 \cdot 0.25 + 6 \cdot (-0.10) =\mathbf{-0.25}.
 \end{aligned}
 \]
-\begin{center}
-\begin{tikzpicture}[x=2cm,y=12cm]
-  % Horizontal baseline
-  \draw[->,thick] (-0.5,0)--(4.5,0) node[right] {\small $\tau_c$};
-  
-  % Bars
-  \draw[fill=WashUGreen!70, draw=WashUGreen, thick] (0.8,0) rectangle (1.8, 0.05);
-  \draw[fill=WashURed!70, draw=WashURed, thick] (2.6,0) rectangle (3.6, -0.25);
-  
-  % Values
-  \node[above=2pt, font=\small\bfseries, color=WashUGreen] at (1.3, 0.05) {$+0.05$};
-  \node[below=2pt, font=\small\bfseries, color=WashURed] at (3.1, -0.25) {$-0.25$};
-  
-  % Coding labels
-  \node[below=4pt, font=\small] at (1.3, 0) {$c_A$};
-  \node[above=4pt, font=\small] at (3.1, 0) {$c_B$};
-  \draw[dashed,PosterGray] (0,0)--(4.1,0);
-\end{tikzpicture}
-\end{center}
 \end{block}
 
-\begin{block}{Identification of Distributional Effects}
-Under standard identification conditions, the full distribution of potential ordinal outcomes is identified.
+\vspace{-0.5cm}
+
+\begin{block}{Failure of Latent Scale Identification}
+\justifying
+\begin{itemize}
+  \item Because the location and scale of $Y_i^*$ are unobserved, we can apply any positive affine transformation that yields same observed ordinal distribution ($\tilde{Y}_i^* = a + c Y_i^*$ and $\tilde{\alpha}_j = a + c \alpha_j$ with $c > 0$):
+\end{itemize}
+
+  \vspace{-0.7cm}
+
+\[
+\Pr(\tilde{\alpha}_{j-1} < \tilde{Y}_i^* \le \tilde{\alpha}_j) 
+= \Pr(a + c\alpha_{j-1} < a + cY_i^* \le a + c\alpha_j) 
+= \Pr(\alpha_{j-1} < Y_i^* \le \alpha_j).
+\]
+
+\begin{itemize}\setlength\itemsep{0.25em}
+  \item The latent index component is scaled by $c$ ($\tilde{m} = c m$).
+  \item The latent thresholds and covariate coefficients are shifted and scaled accordingly.
+\end{itemize}
+
+\vspace{0.4em}
+\assumptionbox{Theorem 1}{
+The latent systematic index $m(X_i, D_i)$ is identified only up to an arbitrary scale shift $c > 0$ and location shift $a$.}
+\end{block}
+
+\begin{block}{Distributional Effects (What We CAN Identify)}
+Focus instead on what is identified: observed-scale probability distributions.
 
 \vspace{0.3em}
-\textbf{Assumptions (SUTVA, Conditional Ignorability, and Positivity):}
+\textbf{Target Causal Estimands:}
 \[
-Y_i(d) \perp D_i \mid X_i \qquad \text{and} \qquad 0 < \Pr(D_i = d \mid X_i) < 1 \quad \forall \, d \in \{0, 1\}.
+\text{Category-specific effect: } \Delta_j = \Pr(Y_i(1) = j) - \Pr(Y_i(0) = j)
 \]
 
-We identify the marginal potential category probabilities via standardization:
+\assumptionbox{Theorem 2}{
+Under standard conditions (SUTVA, Conditional Ignorability $Y_i(d) \perp D_i \mid X_i$, and Positivity), the potential outcome distribution is fully identified:
 \[
-\pi_j(d)=\mathbb E_X\!\left[\Pr(Y_i=j\mid D_i=d,X_i)\right].
+\Pr(Y_i(d) = j) = \mathbb{E}_X\left[ \Pr(Y_i = j \mid D_i=d, X_i) \right]
 \]
+  }
+\assumptionbox{Proposition 1}{
+  Based on Theorem 2, any causal quantity that is a functional of this
+distribution including category-specific effect is also identified.
+  }
 
-\begin{itemize}
-  \item For randomized experiments, random assignment supplies ignorability. Thus the causal target is identified.
-  \item The remaining challenge is estimating the conditional ordinal response distribution.
-\end{itemize}
+% The remaining challenge is estimating the conditional distribution $\Pr(Y_i = j \mid D_i, X_i)$.
 \end{block}
 
 \end{column}
@@ -253,102 +255,176 @@ We identify the marginal potential category probabilities via standardization:
 % =========================================================================
 \begin{column}{\colwidth}
 
-\begin{block}{Estimation Problem}
-For a latent index $m(d,x)$ and conditional error CDF $F_{\varepsilon\mid D,X}$,
-\[
-\begin{aligned}
-p_j(d,x)
-=&\;F_{\varepsilon\mid D,X}\!\left(\alpha_j-m(d,x)\mid d,x\right)\\
-&-F_{\varepsilon\mid D,X}\!\left(\alpha_{j-1}-m(d,x)\mid d,x\right).
-\end{aligned}
-\]
+\begin{block}{Standard Estimation: Parametric Ordered Probit/Logit}
+\justifying
+If the latent error distribution $F(\cdot)$ of $\epsilon_i$ is known to be Standard Normal or Standard Logistic, estimating the conditional probabilities is straightforward.
 
-\begin{itemize}
-  \item If the normal/logistic error family and index specification are correct, ordered probit/logit are efficient and adequate.
-  \item However, we cannot \textit{ex ante} sure whether they are correct.
+\begin{itemize}\setlength\itemsep{0.25em}
+  \item \textbf{Ordered Probit:} Assumes $F(\cdot) = \Phi(\cdot)$ (standard normal CDF).
+  \item \textbf{Ordered Logit:} Assumes $F(\cdot) = \Lambda(\cdot)$ (standard logistic CDF).
 \end{itemize}
+
+We maximize the sample log-likelihood to estimate standard parameters $\Theta = \{\Theta_m, \alpha\}$:
+\[
+\ell_n(\Theta) = \frac{1}{n}\sum_{i=1}^n \sum_{j=1}^J \mathbf{1}(Y_i=j)\log\left[F(\alpha_j - m(X_i, D_i)) - F(\alpha_{j-1} - m(X_i, D_i))\right]
+\]
 \end{block}
 
-\begin{block}{Two Threats to Estimation}
-\vspace{0.5em}
-\begin{columns}[t,totalwidth=\linewidth]
-\begin{column}{0.485\linewidth}
-\threatbox{1. Error distribution}{Normal or logistic errors cannot represent skewness, multimodality, polarization, or treatment-dependent dispersion.}
-\end{column}
-\begin{column}{0.485\linewidth}
-\threatbox{2. Single-index structure}{$Y_i^*=\tau D_i+h(X_i)+\varepsilon_i$ may fail when treatment changes shape rather than only location.}
-\end{column}
-\end{columns}
-\vspace{0.5em}
+\begin{block}{The Core Challenge: Unknown Error Distribution}
+\justifying
+\begin{itemize}\setlength\itemsep{0.3em}
+  \item \textbf{Unknown Base Distribution:} In real-world applications, the true latent error distribution $F(\cdot)$ is \textbf{never known} in advance.
+  \item \textbf{Complex Latent Shapes:} Latent attitudes in political science can be polarized or skewed, directly violating standard symmetric and unimodal parametric shapes.
+\end{itemize}
+
+\vspace{0.4cm}
+\vspace{0.4cm}
+\keybox{Forcing standard normal or logistic errors when the true latent shape is complex  \\ leads to biased and unreliable causal effects $\Delta_j$.}
 \end{block}
 
-\begin{block}{Conditional Normalizing Flows}
-Let $Z_i\sim N(0,1)$ and transform it using an invertible conditional map:
-\[
-\varepsilon_i=T_\phi(Z_i\mid D_i,X_i),
-\qquad
-Z_i=T_\phi^{-1}(\varepsilon_i\mid D_i,X_i).
-\]
-The implied CDF is available as:
-\[
-F_{\varepsilon\mid D,X}(e\mid d,x)
-=\Phi\!\left(T_\phi^{-1}(e\mid d,x)\right).
-\]
+\begin{block}{The Core Idea: Normalizing Flows}
+\justifying
+How can we estimate the shape of $F(\cdot)$ directly from the data?
 
-  \vspace{1cm}
+\vspace{0.3em}
+\begin{itemize}\setlength\itemsep{0.2em}
+  \item A \textbf{Normalizing Flow} is an invertible map $T_\phi$ that stretch and warp the base distribution to match the true error distribution ($\epsilon_i$):
+  \[
+  \epsilon_i = T_\phi(Z_i \mid D_i, X_i)
+  \]
+  where $\phi$ is a vector of parameters for the flow model.
+  \item This gives us the cumulative distribution function (CDF) of the true error distribution analytically:
+  \[
+  F(\epsilon_i \mid d, x) = \Phi\left( T_\phi^{-1}(\epsilon_{i} \mid d, x) \right)
+  \]
+  \item Among flow models, monotone rational-quadratic splines (Durkan et al., 2019) retain invertibility and permit analytical CDF evaluation.
+\end{itemize}
 
+\vspace{0.6cm}
+% {{{
 \begin{center}
-\begin{tikzpicture}[
-  node distance=1.0cm and 1.1cm,
-  box/.style={draw=WashUGreen,very thick,rounded corners=6pt,fill=PosterPaleGreen,align=center,minimum height=1.25cm,text width=5.4cm},
-  rbox/.style={draw=WashURed,very thick,rounded corners=6pt,fill=PosterPaleRed,align=center,minimum height=1.25cm,text width=5.4cm},
-  arr/.style={-{Latex[length=4mm]},very thick,WashURed}
-]
-\node[box] (base) {$Z\sim N(0,1)$\\base \\ distribution};
-\node[rbox,right=of base] (flow) {$T_\phi(\cdot\mid D,X)$\\conditional RQS flow};
-\node[box,right=of flow] (err) {$F_{\varepsilon\mid D,X}$\\flexible latent error};
-\draw[arr] (base)--(flow); \draw[arr] (flow)--(err);
-\node[box,below=of flow,text width=12cm] (prob) {$p_j(d,x)=$ \\ $F(\alpha_j-m)-F(\alpha_{j-1}-m)$};
-\draw[arr] (err.south)|-(prob.east);
+\begin{tikzpicture}[x=2cm,y=2.6cm,>=Latex]
+  % ==================== PANEL (a): Ordered Probit (Identity) ====================
+  \begin{scope}[shift={(-4.2,0)}]
+    \node[above=8pt, font=\small\bfseries] at (0,4.5) {(a) Ordered probit: Assume Normal Error};
+    
+    % Base distribution Z
+    \draw[color=PosterGray] (-2.7,3.5)--(2.7,3.5);
+    \draw[thick, color=blue!80!black] plot[smooth] coordinates {
+      (-2.5,3.52) (-1.8,3.62) (-1.2,3.88) (-0.6,4.18) (0,4.3) (0.6,4.18) (1.2,3.88) (1.8,3.62) (2.5,3.52)
+    };
+    \node[left, font=\tiny, color=PosterGray] at (-1.3,4.2) {$Z \sim N(0,1)$};
+    \node[right, font=\tiny, color=PosterGray] at (1.3,4.2) {evenly spaced};
+    
+    % Mapping line (Middle)
+    \draw[color=PosterGray] (-2.7,2.0)--(2.7,2.0);
+    \node[left, font=\tiny] at (-1.5,2.3) {$\epsilon = Z$};
+    \node[right, font=\tiny, color=PosterGray] at (0,2.3) {(spacing unchanged)};
+    
+    % Connectors & Dots
+    \foreach \x in {-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0} {
+      \fill[blue!80!black] (\x,3.5) circle (3pt);
+      \fill[red!80!black] (\x,2.0) circle (3pt);
+      \draw[color=PosterGray!50, thin] (\x,3.5)--(\x,2.0);
+    }
+    
+    % Target distribution (Bottom)
+    \draw[color=PosterGray] (-2.7,0.5)--(2.7,0.5);
+    
+    % Assumed normal error shape (Red, solid)
+    \draw[thick, color=red!80!black] plot[smooth] coordinates {
+      (-2.5,0.52) (-1.8,0.62) (-1.2,0.88) (-0.6,1.18) (0,1.3) (0.6,1.18) (1.2,0.88) (1.8,0.62) (2.5,0.52)
+    };
+    \node[red!80!black,above,font=\tiny,rotate=15] at (-0.3,1.2) {assumed error};
+    
+    % True multimodal error shape (Green, dashed)
+    \draw[thick, dashed, color=green!60!black] plot[smooth] coordinates {
+      (-2.5,0.51) (-2.0,0.68) (-1.5,0.98) (-1.0,0.72) (-0.5,0.54) (0,0.51) (0.5,0.54) (1.0,0.72) (1.5,0.98) (2.0,0.68) (2.5,0.51)
+    };
+    \node[green!60!black,above,font=\tiny] at (-1.5,1.0) {true error};
+    
+    % Thresholds
+    \draw[dashed, color=PosterGray] (-0.8,0.5)--(-0.8,1.1);
+    \draw[dashed, color=PosterGray] (0.8,0.5)--(0.8,1.1);
+    \node[below, font=\tiny] at (-0.8,0.5) {$\alpha_1 - m$};
+    \node[below, font=\tiny] at (0.8,0.5) {$\alpha_2 - m$};
+    
+    % Probabilities
+    \node[below=8pt, font=\small] at (-1.5,0.5) {$p_1$};
+    \node[below=8pt, font=\small] at (0,0.5) {$p_2$};
+    \node[below=8pt, font=\small] at (1.5,0.5) {$p_3$};
+  \end{scope}
+
+  % ==================== PANEL (b): Conditional Flow (Spline Warp) ====================
+  \begin{scope}[shift={(4.2,0)}]
+    \node[above=8pt, font=\small\bfseries] at (0,4.5) {(b) Conditional flow: $T_\phi$ estimated};
+    
+    % Base distribution Z
+    \draw[color=PosterGray] (-2.7,3.5)--(2.7,3.5);
+    \draw[thick, color=blue!80!black] plot[smooth] coordinates {
+      (-2.5,3.52) (-1.8,3.62) (-1.2,3.88) (-0.6,4.18) (0,4.3) (0.6,4.18) (1.2,3.88) (1.8,3.62) (2.5,3.52)
+    };
+    \node[left, font=\tiny, color=PosterGray] at (-1.3,4.2) {$Z \sim N(0,1)$};
+    \node[right, font=\tiny, color=PosterGray] at (1.3,4.2) {evenly spaced};
+    
+    % Mapping line (Middle)
+    \draw[color=PosterGray] (-2.7,2.0)--(2.7,2.0);
+    \node[left, font=\tiny] at (-1.5,2.3) {$\epsilon = T_\phi(Z \mid d, x)$};
+    \node[right, font=\tiny, color=PosterGray] at (0,2.3) {(crowded $\implies$ density piles up)};
+    
+    % Connectors & Dots (Warped Mapping)
+    \foreach \z/\e in {-2.0/-2.3, -1.5/-1.6, -1.0/-1.45, -0.5/-1.35, 0.0/0.0, 0.5/1.35, 1.0/1.45, 1.5/1.6, 2.0/2.3} {
+      \fill[blue!80!black] (\z,3.5) circle (3pt);
+      \fill[red!80!black] (\e,2.0) circle (3pt);
+      \draw[color=PosterGray!50, thin] (\z,3.5)--(\e,2.0);
+    }
+    
+    % Target distribution (Bottom Bimodal)
+    \draw[color=PosterGray] (-2.7,0.5)--(2.7,0.5);
+    
+    % Estimated error shape (Red, solid - matches the true shape)
+    \draw[thick, color=red!80!black] plot[smooth] coordinates {
+      (-2.5,0.51) (-2.0,0.68) (-1.5,0.98) (-1.0,0.72) (-0.5,0.54) (0,0.51) (0.5,0.54) (1.0,0.72) (1.5,0.98) (2.0,0.68) (2.5,0.51)
+    };
+    \node[red!80!black,above,font=\tiny] at (1.5,1.0) {estimated error};
+    
+    % True multimodal error shape (Green, dashed)
+    \draw[thick, dashed, color=green!60!black] plot[smooth] coordinates {
+      (-2.5,0.51) (-2.0,0.68) (-1.5,0.98) (-1.0,0.72) (-0.5,0.54) (0,0.51) (0.5,0.54) (1.0,0.72) (1.5,0.98) (2.0,0.68) (2.5,0.51)
+    };
+    \node[green!60!black,below,font=\tiny] at (-1.5,1.3) {true error};
+    
+    % Thresholds
+    \draw[dashed, color=PosterGray] (-0.8,0.5)--(-0.8,0.75);
+    \draw[dashed, color=PosterGray] (0.8,0.5)--(0.8,0.75);
+    \node[below, font=\tiny] at (-0.8,0.5) {$\alpha_1 - m$};
+    \node[below, font=\tiny] at (0.8,0.5) {$\alpha_2 - m$};
+    
+    % Probabilities
+    \node[below=8pt, font=\small] at (-1.5,0.5) {$p_1$};
+    \node[below=8pt, font=\small] at (0,0.5) {$p_2$};
+    \node[below=8pt, font=\small] at (1.5,0.5) {$p_3$};
+  \end{scope}
 \end{tikzpicture}
 \end{center}
-\begin{itemize}
-  \item Conditional Normalizing Flow models guarantee more flexible likelihood-based distribution estimation.
-  \item Monotone rational-quadratic splines (Durkan et al., 2019) retain invertibility and permit analytical CDF evaluation.
-\end{itemize}
-\end{block}
-
-\begin{block}{Structured and Model-Free Specifications}
-\renewcommand{\arraystretch}{1.25}
-\begin{center}
-\begin{tabular}{>{\bfseries}p{0.35\linewidth}p{0.29\linewidth}p{0.31\linewidth}}
-\toprule
- & Structured flow & Model-free flow \\
-\midrule
-Systematic component & $\tau d+h_\eta(x)$ & learned nonparametrically \\
-Latent distribution & conditional flow & conditional flow \\
-Relaxes & error family & error family and index \\
-Strength & efficiency & robustness \\
-Cost & residual index risk & greater data demand \\
-\bottomrule
-\end{tabular}
-\end{center}
-Both specifications target the same standardized category-specific and cumulative effects.
+% }}}
 \end{block}
 
 \begin{block}{Likelihood and Consistency}
 \justifying
-The parameters $\Theta = \{\tau, h, \phi, \alpha\}$ maximize the sample log-likelihood:
-\[
-\ell_n(\Theta) = \frac{1}{n}\sum_{i=1}^n \sum_{j=1}^J \mathbf{1}(Y_i = j) \log p_j(D_i, X_i; \Theta).
-\]
+  Substituting the flow-based CDF, the parameters $\Theta = \{\Theta_m, \phi, \alpha\}$ maximize the sample log-likelihood for $m = m(X_{i}, D_{i})$:
 
+\begin{multline*}
+\ell_n(\Theta) = \frac{1}{n}\sum_{i=1}^n \sum_{j=1}^J \mathbf{1}(Y_i = j) \log \left[ \Phi\left(T_\phi^{-1}(\alpha_j - m \mid D_i, X_i)\right) - \Phi\left(T_\phi^{-1}(\alpha_{j-1} - m \mid D_i, X_i)\right) \right]
+\end{multline*}
+
+\vspace{0.4cm}
 \textbf{Assumption C.3 (Flow Approximation \& Identification):}
-The flow family $\{F_\phi\}$ is rich enough to approximate the true error CDF $F_0$ arbitrarily well. The parameters are identified up to a positive affine transformation $(a+c\alpha, c\beta, c\tau)$ with $c > 0$.
+The family of distributions that can be approximated by the flow is rich enough to approximate the true error CDF arbitrarily well. 
 
 \vspace{0.3em}
 \textbf{Assumption C.4 (Regularity Conditions):}
-The parameter space is compact, the likelihood satisfies standard continuity and differentiability conditions, and the model is correctly specified.
+The parameter space is compact, the likelihood satisfies standard continuity and differentiability conditions.
 
 \vspace{0.5em}
 \assumptionbox{Theorem C.2 (Consistency of the Flow Estimator)}{
@@ -357,7 +433,18 @@ Suppose the latent outcome model and threshold structure are correctly specified
 \| \widehat{\Theta} - \Theta_0 \| = o_p(1).
 \]
 }
+
+\begin{itemize}
+  \item Therefore, the flow-based estimators consistently estimate $\Delta_{j}$ 
+\end{itemize}
 \end{block}
+
+% \begin{block}{Nonparametric Extension}
+% \justifying
+% \begin{beamercolorbox}[rounded=true,shadow=false,sep=0.6em,wd=\linewidth]{block alerted body}
+% If the systematic latent index is nonlinear, the normalizing flow $T_\phi$ can condition directly on a nonparametric representation of $(D_i, X_i)$, capturing treatment heterogeneities and nonlinear controls without altering the likelihood setup.
+% \end{beamercolorbox}
+% \end{block}
 
 \end{column}
 \separatorcolumn
@@ -367,24 +454,28 @@ Suppose the latent outcome model and threshold structure are correctly specified
 % =========================================================================
 \begin{column}{\colwidth}
 
+  \begin{block}{Nonlinear Latent Model Extension}
+\justifying
+If $m(X_{i}, D_{i})$ is nonlinear, the model-free normalizing flow $T_\phi$ can condition directly on a nonparametric representation of $(D_i, X_i)$ without altering the likelihood setup.
+\end{block}
+
 \begin{block}{Monte Carlo Simulation}
 
 \begin{itemize}\setlength\itemsep{0.25em}
   \item \textbf{Polarization:} a bimodal latent error distribution.
-  \item \textbf{Index failure:} nonlinear treatment-response structure.
-  \item Estimators: empirical frequencies, ordered probit, ordered logit, structured flow, and model-free flow
+  \item \textbf{Nonlinearity:} nonlinear treatment-response structure.
 \end{itemize}
 
 \begin{figure}
   \centering
   \maybeincludegraphics{width=0.98\textwidth}{../figures/fig_polarized_mixture_N2000.pdf}
-  \caption{Category-specific effects under a polarized latent distribution ($N = 2000$).}
+  \caption{Category-specific effects under a polarized latent distribution ($n = 2000$).}
 \end{figure}
 \vspace{0.15em}
 \begin{figure}
   \centering
   \maybeincludegraphics{width=0.98\textwidth}{../figures/fig_app_nonlinear_moderates_N2000.pdf}
-  \caption{Category-specific effects under a nonlinear latent distribution ($N = 2000$).}
+  \caption{Category-specific effects under a nonlinear structure ($n = 2000$).}
 \end{figure}
 \vspace{-0.2em}
 \begin{itemize}\setlength\itemsep{0.22em}
@@ -400,9 +491,9 @@ Replicating Mattingly et al.(2025)'s survey experiment on how Chinese state medi
 
 \vspace{0.3em}
 \begin{itemize}\setlength\itemsep{0.25em}
-  \item \textbf{Parametric Models (Probit/Logit)} Overestimating the conversion of citizens into extreme supporters (\emph{Strongly Prefer China}).
-  \item \textbf{Flexible Flow Estimators} show the propaganda's primary impact is concentrated in \textbf{intermediate categories}.
-  \item \textbf{Political Science Implication:} Authoritarian propaganda is persuasive not by creating extreme ideologues, but by softening opposition and winning over moderate/indifferent citizens.
+  \item \textbf{Parametric Models (Probit/Logit)} overestimate the conversion of citizens into extreme supporters (\emph{Strongly Prefer China}).
+  \item \textbf{Flexible Flow Estimators} show that the propaganda's primary impact is concentrated in \textbf{intermediate categories}.
+  \item \textbf{Implication:} Authoritarian propaganda is persuasive not by creating extreme ideologues, but by softening opposition and winning over moderate/indifferent citizens.
 \end{itemize}
 
 \vspace{0.25em}
@@ -414,11 +505,11 @@ Replicating Mattingly et al.(2025)'s survey experiment on how Chinese state medi
 
 \begin{block}{Conclusion}
 \begin{enumerate}\setlength\itemsep{0.35em}
-  \item \textbf{Cardinalized mean effects are not identified from the ordinal outcomes.}
-  \item \textbf{Category-specific and cumulative probability effects are causally interpretable under standard identification assumptions.}
-  \item \textbf{Conditional flows separate substantive conclusions from restrictive error-distribution and index assumptions.}
+  \item \textbf{Cardinalized mean effects are not identified with ordinal outcomes.}
+  \item \textbf{Category-specific effects are identified under standard identification assumptions.}
 \end{enumerate}
 \vspace{0.25em}
+\keybox{Report distributional effects and compare structured and model-free estimators when ordered logit/probit assumptions are doubtful.}
 \end{block}
 
 \begin{block}{Contact and Materials}
@@ -426,7 +517,7 @@ Replicating Mattingly et al.(2025)'s survey experiment on how Chinese state medi
 Washington University in St. Louis\par
 Email: \texttt{chanhyuk@wustl.edu}\par
 \vspace{0.2em}
-Code \& Data: \url{https://github.com/chanhyuk58/ordinal_outcome}
+Code \& Data: \url{https://github.com/chanhyuk58/ordinal_flow}
 \end{block}
 
 \end{column}

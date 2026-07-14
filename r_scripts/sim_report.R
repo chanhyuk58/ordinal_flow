@@ -43,7 +43,7 @@ plot_setting_effects <- function(setting_name, output_filename) {
   plot_df <- df %>%
     filter(
       setting == setting_name,
-      n == 2000,
+      n == 1000,
       metric %in% c("category_effect", "cum_ge_effect")
     ) %>%
     mutate(
@@ -91,9 +91,9 @@ plot_setting_effects <- function(setting_name, output_filename) {
 
 # Generate Main Text Figures
 print("Generating Main Text Figures...")
-plot_setting_effects("normal_linear", "fig_app_normal_linear_N2000.pdf")
-plot_setting_effects("heteroskedastic", "fig_heteroskedastic_N2000.pdf")
-plot_setting_effects("polarized_mixture", "fig_polarized_mixture_N2000.pdf")
+plot_setting_effects("normal_linear", "fig_app_normal_linear_N1000.pdf")
+plot_setting_effects("heteroskedastic", "fig_heteroskedastic_N1000.pdf")
+plot_setting_effects("polarized_mixture", "fig_polarized_mixture_N1000.pdf")
 
 # ---------------------------------------------------------------------
 # Part 2: Main Text Wasserstein RMSE Convergence Plot
@@ -139,10 +139,10 @@ ggsave(here("figures", "fig_wasserstein_convergence.pdf"), plot = p_conv, width 
 # Part 3: Appendix Figures (Other Settings and Sample Sizes)
 # ---------------------------------------------------------------------
 print("Generating Appendix Figures...")
-plot_setting_effects("logistic_linear", "fig_logistic_linear_N2000.pdf")
-plot_setting_effects("skewed_lognormal", "fig_app_skewed_lognormal_N2000.pdf")
-plot_setting_effects("nonlinear_moderates", "fig_app_nonlinear_moderates_N2000.pdf")
-plot_setting_effects("high_dimensional", "fig_app_high_dimensional_N2000.pdf")
+plot_setting_effects("logistic_linear", "fig_logistic_linear_N1000.pdf")
+plot_setting_effects("skewed_lognormal", "fig_app_skewed_lognormal_N1000.pdf")
+plot_setting_effects("nonlinear_moderates", "fig_app_nonlinear_moderates_N1000.pdf")
+plot_setting_effects("high_dimensional", "fig_app_high_dimensional_N1000.pdf")
 
 # ---------------------------------------------------------------------
 # Part 4: Main Text LaTeX Table (Polished booktabs)
