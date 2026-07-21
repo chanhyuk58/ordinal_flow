@@ -12,6 +12,8 @@
 \renewcommand{\thefigure}{\Alph{section}.\arabic{figure}}
 \renewcommand{\thetable}{\Alph{section}.\arabic{table}}
 \renewcommand{\theequation}{\Alph{section}.\arabic{equation}}
+\renewcommand{\theassumption}{\Alph{section}.\arabic{assumption}}
+\renewcommand{\thetheorem}{\Alph{section}.\arabic{theorem}}
 
 \numberwithin{figure}{section}
 \numberwithin{table}{section}
@@ -20,6 +22,8 @@
 \setcounter{figure}{0}
 \setcounter{table}{0}
 \setcounter{equation}{0}
+\setcounter{assumption}{0}
+\setcounter{theorem}{0}
 
 \onehalfspacing
 
@@ -41,6 +45,8 @@ This appendix provides supplementary theoretical derivations, estimation details
 \label{app:theory}
 
 \subsection{Probability-Based Estimands and Latent Scale Invariance}
+\label{appsub:invariance}
+
 Recall that the observed ordinal response $Y_i \in \{0, 1, \dots, J\}$ is generated via the threshold-crossing model:
 \begin{equation}
 Y_i = j \quad \Longleftrightarrow \quad \alpha_{j-1} < Y_i^* \le \alpha_j,
@@ -53,14 +59,94 @@ P(\tilde{Y}_i = j) &= P(\tilde{\alpha}_{j-1} < \tilde{Y}_i^* \le \tilde{\alpha}_
 &= P(a + c\alpha_{j-1} < a + cY_i^* \le a + c\alpha_j) \\
 &= P(\alpha_{j-1} < Y_i^* \le \alpha_j) = P(Y_i = j).
 \end{align*}
-Because the category probabilities $\pi_j(d) = P(Y_i(d) = j)$ remain unchanged under any positive affine scale shift, any causal quantity defined directly as a functional of these probabilities is invariant to the choice of scale. 
+Because the category probabilities $\pi_j(d) = P(Y_i(d) = j)$ remain unchanged under any positive affine scale shift, any causal quantity defined directly as a functional of these probabilities is strictly invariant to the choice of scale. 
 
 \subsection{Wasserstein Distance as a Distributional Metric}
+\label{appsub:wasserstein}
+
 To summarize overall treatment effects across the entire distribution without relying on arbitrary numerical score assignments, we employ the one-dimensional $L_1$ Wasserstein distance (also known as the Earth Mover's Distance). For two cumulative distribution functions (CDFs) $F_1$ and $F_0$ defined over the ordered categories $\{0, 1, \dots, J\}$, the Wasserstein distance is formulated as:
 \begin{equation}
 \mathcal{W}(F_1, F_0) = \sum_{j=0}^{J-1} \left| F_1(j) - F_0(j) \right|,
 \end{equation}
 where $F_d(j) = P(Y_i(d) \le j)$ for $d \in \{0,1\}$. This metric measures the minimum cost of shifting probability mass to transform the control outcome distribution into the treatment outcome distribution, preserving the natural ordering of categories.
+
+\subsection{Nonparametric Identification of the Latent Error Distribution}
+\label{appsub:identification}
+
+A primary theoretical contribution of the conditional normalizing flow framework is the relaxation of parametric assumptions on the latent error distribution. To establish that this relaxation is theoretically sound, we formally prove that the latent error distribution $F$ and the thresholds $\alpha$ are nonparametrically identified from the observed data.
+
+Let the latent potential outcome be represented by the single-index structure:
+\begin{equation}
+Y_i^* = m(X_i, D_i) + \varepsilon_i,
+\end{equation}
+where $m(X_i, D_i) \in \mathbb{R}$ is the systematic index, and $\varepsilon_i$ is a continuous latent disturbance with cumulative distribution function $F$. Let $V_i = m(X_i, D_i)$ denote the value of the index for individual $i$. 
+
+We impose the following standard regularity assumptions:
+\begin{assumption}[Exogeneity]
+The latent error is statistically independent of the treatment and covariates: $\varepsilon_i \perp (X_i, D_i)$.
+\label{ass:exogeneity}
+\end{assumption}
+
+\begin{assumption}[Index Identification]
+The systematic index $V_i = m(X_i, D_i)$ is identified up to a positive affine transformation from the conditional mean of the observed outcomes.
+\label{ass:index}
+\end{assumption}
+
+\begin{assumption}[Continuous Large Support]
+The systematic index $V_i$ is a continuous random variable with support $\mathcal{V} \subseteq \mathbb{R}$. For each $j \in \{0, \dots, J-1\}$, the set of shifted values $\{\alpha_j - v : v \in \mathcal{V}\}$ contains the support of the latent error $\varepsilon_i$.
+\label{ass:support}
+\end{assumption}
+
+\begin{assumption}[Normalizations]
+\label{ass:normalization}
+To fix the location and scale of the latent variable, we normalize the latent space by setting the first threshold $\alpha_0 = 0$ (location normalization) and regulating the model parameters of the systematic index $m(X_i, D_i)$ to have an $L_2$ norm of 1.
+\end{assumption}
+
+Under these standard normalizations, the location and scale of the latent variable are uniquely pinned down. Consequently, the systematic index $V_i = m(X_i, D_i)$ is fully point-identified from the conditional mean of the observed outcomes \citep{Manski1988a, Klein1993a}. We can now establish the nonparametric identification of the latent error distribution and the remaining thresholds:
+
+\begin{theorem}[Nonparametric Identification]
+Under Assumptions~\ref{ass:exogeneity}--\ref{ass:normalization}, the latent error distribution $F$ and the partition thresholds $\alpha_j$ for $j \in \{1, \dots, J-1\}$ are uniquely and nonparametrically identified.
+\end{theorem}
+
+\begin{proof}
+By the threshold-crossing model, the observed cumulative probability of responding at or below category $j$ conditional on the index value $V_i = v$ is:
+\begin{align}
+P(Y_i \le j \mid V_i = v) &= P(Y_i^* \le \alpha_j \mid V_i = v) \nonumber \\
+&= P(V_i + \varepsilon_i \le \alpha_j \mid V_i = v) \nonumber \\
+&= P(\varepsilon_i \le \alpha_j - v \mid V_i = v).
+\end{align}
+Applying Assumption~\ref{ass:exogeneity} (independence), this conditional probability simplifies to:
+\begin{equation}
+P(Y_i \le j \mid V_i = v) = F(\alpha_j - v).
+\label{eq:id_fundamental}
+\end{equation}
+
+First, we identify the latent error distribution $F(\cdot)$. Under the location normalization in Assumption~\ref{ass:normalization}, we have $\alpha_0 = 0$. Setting $j = 0$ in Equation~\eqref{eq:id_fundamental} yields:
+\begin{equation}
+P(Y_i \le 0 \mid V_i = v) = F(-v).
+\end{equation}
+By Assumption~\ref{ass:support} (large support), the index $V_i$ varies continuously over $\mathcal{V}$. Therefore, we can recover the value of $F(u)$ for any $u$ in the support of $\varepsilon_i$ by evaluating the observed probability at $v = -u$:
+\begin{equation}
+F(u) = P(Y_i \le 0 \mid V_i = -u).
+\end{equation}
+Because the left-hand side is an observed conditional probability, the function $F(\cdot)$ is uniquely identified on its entire support.
+
+Second, we identify the remaining thresholds $\alpha_j$ for $j \ge 1$. For any $j > 0$, we have:
+\begin{equation}
+P(Y_i \le j \mid V_i = v) = F(\alpha_j - v).
+\end{equation}
+Since $F(\cdot)$ is a continuous and strictly monotonic cumulative distribution function, its inverse $F^{-1}(\cdot)$ exists and is uniquely identified. Applying the inverse function to both sides yields:
+\begin{equation}
+\alpha_j - v = F^{-1}\left( P(Y_i \le j \mid V_i = v) \right),
+\end{equation}
+which identifies the threshold $\alpha_j$ as:
+\begin{equation}
+\alpha_j = v + F^{-1}\left( P(Y_i \le j \mid V_i = v) \right).
+\end{equation}
+Because this relation holds for any $v \in \mathcal{V}$, the thresholds $\alpha_j$ are overidentified and uniquely recovered, completing the proof.
+\end{proof}
+
+The continuous large support assumption (Assumption~\ref{ass:support}) is the key theoretical requirement that enables nonparametric identification. Intuitively, it ensures that the systematic index $V_i$ has enough variation to "sweep" the fixed thresholds across the entire range of the latent attitude, allowing us to map out the exact shape of the latent error distribution $F$ without relying on any parametric assumptions.
 
 \clearpage
 
@@ -93,91 +179,127 @@ This generalized formulation is fully compatible with both the semiparametric KD
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \label{app:estimation}
 
-\subsection{Normalizing Flows}
-\label{app:flows}
+This section provides the complete architectural, optimization, and algorithmic details of the proposed conditional normalizing flow estimators implemented in the paper, followed by formal proofs of asymptotic consistency and bootstrap validity.
 
-This appendix provides additional details for the normalizing-flow-based estimator described in Section~\ref{sec:estimation}.
+\subsection{Architectural Details of the Flow Estimators}
+\label{appsub:architecture}
 
-\subsubsection{Change-of-Variables Formula}
-Let $Z$ be a random variable with a known base density $f_Z(z)$ (the standard normal density), and let $T_\theta: \mathbb{R} \to \mathbb{R}$ be an invertible, differentiable transformation parameterized by $\theta$. Define:
-$$
-\varepsilon = T_\theta(Z).
-$$
-Then, by the change-of-variables formula, the density of $\varepsilon$ is:
-$$
-f_\theta(\varepsilon)
-= f_Z\bigl( T_\theta^{-1}(\varepsilon) \bigr)
-\left| \frac{d}{d\varepsilon} T_\theta^{-1}(\varepsilon) \right|.
-$$
-The corresponding CDF $F_\theta$ is:
-$$
-F_\theta(u)
-= \int_{-\infty}^u f_\theta(t) \, dt.
-$$
+The framework implements two primary models: the \textit{Structured Flow} and the \textit{Model-Free Flow}. 
 
-\subsubsection{Ordinal Likelihood with a Flow-Based Error Distribution}
-We embed the flow-based error distribution into the latent outcome model:
-$$
-Y_i^* = f(X_i,\beta) + D_i^\top\tau + \varepsilon_i,
-\qquad
-\varepsilon_i = T_\theta(Z_i),
-\quad
-Z_i \sim \mathcal{N}(0,1),
-$$
-with thresholds $\alpha$ defining the observed ordinal outcome:
-$$
-Y_i = j
-\quad\Longleftrightarrow\quad
-\alpha_{j-1} < Y_i^* \le \alpha_j.
-$$
-Let $f_\theta$ and $F_\theta$ denote the density and CDF of $\varepsilon_i$ implied by the flow $T_\theta$. Conditional on $(X_i,D_i)$, the probability of category $j$ is:
-$$
-\mathbb{P}(Y_i = j \mid X_i,D_i;\alpha,\beta,\tau,\theta)
-= F_\theta\bigl( \alpha_j - V_i(\beta,\tau) \bigr)
-- F_\theta\bigl( \alpha_{j-1} - V_i(\beta,\tau) \bigr),
-$$
-where $V_i(\beta,\tau) = f(X_i,\beta) + D_i^\top\tau$. The sample log-likelihood is:
-$$
-\ell_n(\alpha,\beta,\tau,\theta)
-= \frac{1}{n} \sum_{i=1}^n
-\sum_{j=0}^J 1_{\{Y_i=j\}}
-\log\left[
-F_\theta\bigl( \alpha_j - V_i(\beta,\tau) \bigr)
-- F_\theta\bigl( \alpha_{j-1} - V_i(\beta,\tau) \bigr.
-\right].
-$$
-We estimate $(\alpha,\beta,\tau,\theta)$ jointly by maximizing $\ell_n(\alpha,\beta,\tau,\theta)$ with respect to all parameters.
+\subsubsection{The Structured Flow Model}
+The Structured Flow model retains the interpretability of a linear single-index latent variable model while learning the latent error distribution nonparametrically. To ensure formal identification, we impose strict mathematical constraints on the parameter space:
 
-\subsubsection{Consistency of the Flow-Based Estimator}
-Let $(\alpha_0,\beta_0,\tau_0,F_0)$ denote the true parameters and error distribution.
+\begin{enumerate}
+  \item \textbf{Unit L2-Norm Index Scale Normalization:} To resolve the scale non-identification of the latent index coefficients (Theorem~1), as in the Assumption~\ref{ass:normalization} we normalize the model parameter vectors of the systematic index $m(X_i, D_{i})$, $\beta \in \mathbb{R}^p$ to lie on the unit sphere during training. Given a raw trainable parameter vector $\theta \in \mathbb{R}^p$, we analytically enforce:
+    \begin{equation}
+    \beta = \frac{\theta}{\max\left(\|\theta\|_2, \, 10^{-12}\right)}.
+    \end{equation}
 
-\textbf{Assumption C.3} (Flow Approximation and Identification). 
-\textit{The flow family $\{F_\theta : \theta \in \Theta\}$ is rich enough that there exists $\theta_0 \in \Theta$ such that $F_{\theta_0} = F_0$ (or $F_{\theta_0}$ approximates $F_0$ arbitrarily well). }
+    \item \textbf{Recursive Threshold Ordering Constraint:} To prevent threshold crossing (which would yield negative category probabilities), we parameterize the partition thresholds $\alpha \in \mathbb{R}^{J-1}$ recursively. The first threshold $\alpha_1$ is anchored at the origin ($\alpha_1 = 0$) to fix location. For all subsequent thresholds $j \in \{2, \dots, J-1\}$, we define:
+    \begin{equation}
+    \alpha_{j, i} = \alpha_{j-1, i} + \text{softplus}(\lambda_{j-1, i}) + \delta_{\text{min}},
+    \end{equation}
+    where $\lambda_{j-1, i}$ is a raw parameter (which may be modeled as a linear function of threshold-specific covariates $Z_i$ to allow for heterogeneous reporting behavior), and $\delta_{\text{min}} > 0$ is a user-specified minimum threshold gap (set to $10^{-4}$ by default). This formulation mathematically guarantees that $-\infty < \alpha_{1,i} < \alpha_{2,i} < \dots < \alpha_{J-1,i} < \infty$ for all individuals.
 
-\textbf{Assumption C.4} (Regularity Conditions). 
-\textit{The parameter space for $(\alpha,\beta,\tau,\theta)$ is compact or can be restricted to a compact subset; the log-likelihood function $\ell_n(\alpha,\beta,\tau,\theta)$ satisfies standard regularity conditions (continuity, differentiability, integrability).}
+    \item \textbf{Location-Scale Flow Alignment:} Let $E_{i,j} = \alpha_j - X_i \beta$ represent the boundary values in the latent error space. To facilitate stable optimization of the spline parameters, we apply a learnable location shift $b \in \mathbb{R}$ and scale parameter $a > 0$ to align the error boundaries prior to passing them through the flow:
+    \begin{equation}
+    \tilde{E}_{i,j} = \frac{E_{i,j} - b}{\text{softplus}(a_{\text{raw}})},
+    \end{equation}
+    where $a_{\text{raw}}$ is the raw scale parameter.
 
-\textbf{Theorem C.2} (Consistency of the Flow-Based Estimator). 
-\textit{Suppose the latent outcome model and threshold structure are correctly specified, and Assumptions C.3--C.4 hold. Then, as $n \to \infty$,}
-$$
-\bigl| (\hat{\alpha},\hat{\beta},\hat{\tau},\hat{\theta})
-- (\alpha_0,\beta_0,\tau_0,\theta_0)
-\bigr| = o_p(1),
-$$
-\textit{up to an arbitrary positive affine transformation $(a + c\alpha_0, c\beta_0, c\tau_0)$ with $c>0$.}
+    \item \textbf{One-Dimensional Rational-Quadratic Spline (RQS) Mapping:} The aligned boundaries $\tilde{E}_{i,j}$ are transformed into standard normal latent coordinates $Z_{i,j}$ using a custom 1D monotonic rational-quadratic spline $T_\phi^{-1}$:
+    \begin{equation}
+    Z_{i,j} = T_\phi^{-1}\left( \tilde{E}_{i,j} \right).
+    \end{equation}
+    The spline divides the space $[-B, B]$ (where the tail bound $B$ is set to $10.0$ by default) into $K = 16$ bins. Within each bin, $T_\phi^{-1}$ is parameterized as a rational-quadratic spline with analytical derivatives. Outside the bounds, the transformation is strictly linear to ensure stable behavior at the tails.
+\end{enumerate}
 
-We impose the error-variance normalization $\mathrm{Var}(\varepsilon_i) = 1$ ex post. Given $\hat{\theta}$, we estimate:
-$$
-\hat{\sigma}_\varepsilon^2
-= \mathrm{Var}_{F_{\hat{\theta}}}(\varepsilon_i)
-\approx \frac{1}{M} \sum_{m=1}^M \bigl( T_{\hat{\theta}}(Z_m) \bigr)^2,
-$$
-where $Z_m \sim \mathcal{N}(0,1)$ are independent draws. We then report:
-$$
-\hat{\tau}^{\text{unit-var}} = \frac{\hat{\tau}}{\hat{\sigma}_\varepsilon},
-\qquad
-\hat{\beta}^{\text{unit-var}} = \frac{\hat{\beta}}{\hat{\sigma}_\varepsilon}.
-$$
+Once the boundary mappings $Z_{i,j}$ are evaluated, the conditional probability for category $j \in \{0, \dots, J-1\}$ is calculated exactly using the standard normal cumulative distribution function $\Phi(\cdot)$:
+\begin{equation}
+P(Y_i = j \mid X_i, Z_i) = \Phi\left( Z_{i, j+1} \right) - \Phi\left( Z_{i, j} \right),
+\end{equation}
+where $Z_{i,0} = -\infty$ and $Z_{i,J} = \infty$.
+
+\subsubsection{The Model-Free Flow Model}
+The Model-Free Flow relaxes both the linear index and the parametric error assumptions. Instead of a scalar latent variable model, it directly parameterizes the threshold boundaries $B_{i, j} = \alpha_j$ and uses an autoregressive conditional flow to transform these thresholds into latent coordinate space $Z_{i, j}$:
+\begin{equation}
+Z_{i, j} = T^{-1}_{\text{AR}}\left( B_{i,j} \mid X_i \right),
+\end{equation}
+where $T^{-1}_{\text{AR}}$ is implemented as a Masked Piecewise Rational Quadratic Autoregressive Transform conditioned on the full covariate context vector $X_i$. This formulation allows the conditional ordinal response distribution to adapt nonparametrically to complex, high-dimensional interaction and non-linear patterns.
+
+\subsection{Warm-Start Initialization and Two-Stage Optimization}
+\label{appsub:optimization}
+
+To ensure high numerical stability and rapid training, we implement a highly structured training pipeline:
+
+\subsubsection{Probit Warm-Start Initialization}
+Before maximizing the exact flow likelihood, we initialize the parameters of the \textit{Structured Flow} using standard Ordered Probit estimates obtained via BFGS from the \texttt{statsmodels} library. Let $\beta_{\text{probit}} \in \mathbb{R}^p$ and $\alpha_{\text{probit}} \in \mathbb{R}^{J-1}$ denote the fitted probit parameters. Because the flow model constrains $\|\beta\|_2 = 1$, we scale and map these estimates to initialize the flow parameters as follows:
+\begin{enumerate}
+    \item Compute the scale factor: $s = \|\beta_{\text{probit}}\|_2$.
+    \item Initialize the index parameter: $\theta_{\text{init}} = \beta_{\text{probit}}$, which guarantees that the normalized vector $\beta$ equals the normalized direction of the Probit coefficients.
+    \item Initialize the scale parameters: $a_{\text{raw, init}} = \text{softplus}^{-1}(1/s)$, matching the variance scaling of the Probit.
+    \item Initialize the location shift: $b_{\text{init}} = -\alpha_{\text{probit}, 0}/s$.
+    \item If $J > 2$, initialize the gap parameters using the scaled differences: 
+    \begin{equation}
+    \lambda_{j-1, \text{init}} = \text{softplus}^{-1}\left( \frac{\alpha_{\text{probit}, j} - \alpha_{\text{probit}, j-1}}{s} - \delta_{\text{min}} \right).
+    \end{equation}
+\end{enumerate}
+This analytical initialization ensures that the model starts training *exactly* at the Ordered Probit solution, guaranteeing that the flow can only improve upon the classical baseline.
+
+\subsubsection{Two-Stage Training and Split Learning Rates}
+Training proceeds in two distinct stages to protect the fragile threshold-gaps during early training:
+\begin{itemize}
+    \item \textbf{Stage 1 (Epochs 1--20):} The spline parameters $\phi$ are completely frozen. The Adam optimizer ($lr = 5 \times 10^{-3}$) optimizes only the index $\theta$, thresholds $\alpha$, location $b$, and scale $a$. This allows the model to find a stable linear projection before warping the distribution.
+    \item \textbf{Stage 2 (Epoch 21 onward):} The spline parameters $\phi$ are unfrozen. To prevent training instability, we use split learning rates: the index and threshold parameters continue optimizing at $lr$, while the spline parameters are optimized at a 10x smaller learning rate ($0.1 \times lr$).
+\end{itemize}
+
+\subsubsection{Second-Stage L-BFGS Polishing}
+Once Adam meets the early stopping criteria (a patience of 15 epochs with a improvement tolerance of $10^{-4}$), we transition to a second-stage L-BFGS optimizer. Using a Strong-Wolfe line search, L-BFGS leverages exact Hessian approximations to polish the parameters, driving the gradient of the exact log-likelihood precisely to zero and ensuring highly accurate convergence.
+
+
+\clearpage
+
+\subsection{Theoretical Consistency and Bootstrap Validity}
+\label{appsub:bootstrap_proof}
+
+Let $\Theta = \{\beta, \alpha, a_{\text{raw}}, b, \phi\} \in \boldsymbol{\Theta}$ collect all parameters of the Structured Flow model, and let $\ell_n(\Theta)$ denote the sample log-likelihood. Let $F_0$ denote the true latent error distribution, and let $\Theta_0$ denote the true parameter vector. To establish consistency and asymptotic normality of the flow-based maximum likelihood estimator, we impose the following standard regularity conditions:
+
+\begin{assumption}[Flow Approximation and Identification]
+  The flow family \(\{F_\phi : \phi \in \Phi\}\), consisting of the distributions representable by the specified flow model, is sufficiently rich that there exists a parameter vector \(\phi_0\) in the closure of the parameter space such that \(F_{\phi_0}=F_0\). More generally, \(F_{\phi_0}\) may approximate the true latent error distribution \(F_0\) arbitrarily well in Kullback–Leibler divergence.
+\label{ass:flow_approx}
+\end{assumption}
+
+\begin{assumption}[Regularity Conditions]
+The joint parameter space $\boldsymbol{\Theta}$ is compact (or can be restricted to a compact subset). The density of the covariates $X_i$ has compact support, and the conditional log-likelihood $\ell_n(\Theta)$ is continuous, twice-differentiable, and satisfies standard integrability conditions.
+\label{ass:regularity}
+\end{assumption}
+
+Under these assumptions, we establish the consistency of the flow-based maximum likelihood estimator:
+
+\begin{theorem}[Consistency of the MLE]
+Under the identification results of Appendix~\ref{appsub:identification} and Assumptions~\ref{ass:exogeneity}--\ref{ass:regularity}, the maximum likelihood estimator $\widehat{\Theta}_n = \arg\max_{\Theta \in \boldsymbol{\Theta}} \ell_n(\Theta)$ is consistent:
+\begin{equation}
+\|\widehat{\Theta}_n - \Theta_0\|_2 = o_p(1) \quad \text{as} \quad n \to \infty.
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+By Assumption~\ref{ass:flow_approx}, the true latent error distribution lies within the approximating class of the conditional normalizing flow. Because the rational-quadratic spline $T_\phi^{-1}$ is piecewise continuous and strictly monotonic with continuous derivatives, the likelihood function $P(Y_i = j \mid X_i; \Theta)$ is continuous and bounded away from $0$ and $1$. Under the compactness and integrability conditions in Assumption~\ref{ass:regularity}, combined with the unique nonparametric identification proved in Appendix~\ref{appsub:identification}, the standard Wald conditions for the consistency of maximum likelihood estimators are satisfied, yielding $\|\widehat{\Theta}_n - \Theta_0\|_2 \xrightarrow{p} 0$.
+\end{proof}
+
+\begin{theorem}[Asymptotic Normality and Bootstrap Validity]
+Under Assumptions~\ref{ass:exogeneity}--\ref{ass:regularity}, the MLE $\widehat{\Theta}_n$ is asymptotically normal:
+\begin{equation}
+\sqrt{n}(\widehat{\Theta}_n - \Theta_0) \xrightarrow{d} \mathcal{N}(0, \, I(\Theta_0)^{-1}),
+\end{equation}
+where $I(\Theta_0) = -\mathbb{E}[\nabla^2_\Theta \ell_i(\Theta_0)]$ is the positive-definite Fisher Information Matrix. Furthermore, let $g(\Theta)$ represent any smooth, continuously differentiable post-estimation functional of the distribution (such as the average marginal category-specific treatment effect $\widehat{\Delta}_j$ or the Wasserstein distance $\mathcal{W}$). Then, the nonparametric bootstrap distribution of $g(\widehat{\Theta}_n^*)$ is a consistent estimator of the true asymptotic distribution of $g(\widehat{\Theta}_n)$.
+\end{theorem}
+
+\begin{proof}
+Since the spline function $T_\phi^{-1}$ is twice-differentiable everywhere, the score function $\nabla_\Theta \ell_n(\Theta)$ and Hessian $\nabla^2_\Theta \ell_n(\Theta)$ are continuous and bounded. Thus, the Fisher information matrix is well-defined and positive-definite, establishing asymptotic normality of the MLE. 
+
+Let $g(\Theta)$ be a smooth, continuously differentiable functional mapping the estimated parameters to the causal quantities of interest. By the Delta Method, $\sqrt{n}(g(\widehat{\Theta}_n) - g(\Theta_0)) \xrightarrow{d} \mathcal{N}(0, \, \nabla g(\Theta_0)^\top I(\Theta_0)^{-1} \nabla g(\Theta_0))$. Since standard regularity conditions for the bootstrap hold for smooth, asymptotically normal maximum-likelihood parameters in finite-dimensional spaces \citep{Bickel1981a}, the bootstrap distribution consistently estimates the variance of the parameters. Because the mapping $g(\cdot)$ is continuously differentiable, the bootstrap distribution of the causal estimand $g(\widehat{\Theta}_n^*)$ converges in probability to the true asymptotic distribution, validating the use of bootstrapped confidence intervals for all reported probability-based causal effects.
+\end{proof}
 
 \clearpage
 
